@@ -2026,7 +2026,7 @@ function NetworkDock({
     <button key={k} onClick={() => { setTab(k); setOpen(true); }}
       style={{
         display: "flex", alignItems: "center", gap: 6, height: 36, padding: "0 12px",
-        fontSize: 12, fontWeight: tab === k ? 600 : 500,
+        fontSize: 12, fontWeight: tab === k ? 600 : 500, whiteSpace: "nowrap", flexShrink: 0,
         color: tab === k ? T.n1 : T.n1100, background: tab === k ? T.surface1 : "transparent",
         borderBottom: `2px solid ${tab === k && open ? T.blue800 : "transparent"}`, cursor: "pointer",
       }}>
@@ -2087,42 +2087,42 @@ function NetworkDock({
           </div>
         )}
 
-        {open && tab === "network" && (
-          <div className="flex items-center" style={{ gap: 8, marginLeft: 12 }}>
-            {searchInput(searchNetwork, setSearchNetwork, "Search stations...")}
-            <div className="flex items-center" style={{ gap: 4, flexWrap: "wrap" }}>
-              {groups.map((g) => (
-                <button key={g} onClick={() => setFilter(g)}
-                  style={{ fontSize: 11, fontWeight: 500, padding: "2px 7px", borderRadius: T.r16,
-                    background: filter === g ? T.n1 : T.white, color: filter === g ? T.white : T.n1100,
-                    border: `1px solid ${filter === g ? T.n1 : T.borderPrimary}` }}>
-                  {g === "all" ? "All" : GROUP_META[g].label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {open && tab === "incidents" && (
-          <div className="flex items-center" style={{ gap: 8, marginLeft: 12 }}>
-            {searchInput(searchIncidents, setSearchIncidents, "Search incidents...")}
-          </div>
-        )}
-
-        {open && tab === "ea" && (
-          <div className="flex items-center" style={{ gap: 8, marginLeft: 12 }}>
-            {searchInput(searchEa, setSearchEa, "Search warnings...")}
-          </div>
-        )}
-
-        <div className="flex-1" />
+        {/* Spacer only when open — when collapsed the alert badge bar (flex:1)
+            already stretches to the Expand button, so it isn't cropped early. */}
+        {open && <div className="flex-1" />}
         <button onClick={() => setOpen(!open)} aria-expanded={open}
           style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600,
-            color: T.n1100, padding: "0 12px", height: 36, cursor: "pointer", background: "none", border: "none" }}>
+            color: T.n1100, padding: "0 12px", height: 36, cursor: "pointer", background: "none", border: "none",
+            flexShrink: 0, whiteSpace: "nowrap" }}>
           {open ? <FigIcon name="keyDown" size={12} /> : <FigIcon name="keyUp" size={12} />}
           {open ? "Collapse" : "Expand"}
         </button>
       </header>
+
+      {/* Toolbar row — search + filters live below the tab strip so the
+          group pills can wrap into multiple rows without breaking the header. */}
+      {open && (tab === "network" || tab === "incidents" || tab === "ea") && (
+        <div className="flex items-center shrink-0" style={{ gap: 8, padding: "6px 12px", flexWrap: "wrap",
+          background: T.n400, borderBottom: `1px solid ${T.borderPrimary}` }}>
+          {tab === "network" && (
+            <>
+              {searchInput(searchNetwork, setSearchNetwork, "Search stations...")}
+              <div className="flex items-center" style={{ gap: 4, flexWrap: "wrap" }}>
+                {groups.map((g) => (
+                  <button key={g} onClick={() => setFilter(g)}
+                    style={{ fontSize: 11, fontWeight: 500, padding: "2px 7px", borderRadius: T.r16, whiteSpace: "nowrap",
+                      background: filter === g ? T.n1 : T.white, color: filter === g ? T.white : T.n1100,
+                      border: `1px solid ${filter === g ? T.n1 : T.borderPrimary}`, cursor: "pointer" }}>
+                    {g === "all" ? "All" : GROUP_META[g].label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {tab === "incidents" && searchInput(searchIncidents, setSearchIncidents, "Search incidents...")}
+          {tab === "ea" && searchInput(searchEa, setSearchEa, "Search warnings...")}
+        </div>
+      )}
 
       {open && tab === "network" && (
         <div className="flex-1 min-h-0 overflow-y-auto fiq-scroll">
