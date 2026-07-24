@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { LineChart, Line, ResponsiveContainer } from "recharts";
-import { MapContainer, TileLayer, Polygon, Polyline, Marker, Tooltip, useMap, useMapEvent } from "react-leaflet";
+import { LineChart, Line, ResponsiveContainer, ReferenceLine } from "recharts";
+import { MapContainer, TileLayer, Polygon, Polyline, Marker, Tooltip, CircleMarker, Popup, useMap, useMapEvent } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { HEATHROW_VIEW, TERMINAL_VIEW, BASEMAPS, SCHEME, LONGFORD_RIVER, latlngFor } from "./src/map/geo.js";
@@ -23,6 +23,7 @@ const T = {
   surface1: "#FFFFFF",
   // brand
   blue800: "#3B6DE6",
+  blue100: "#EEF4FE",
   blueP2: "#0A7DFF",
   blueP1: "#231EDC",
   red800: "#CC334F",
@@ -141,6 +142,48 @@ const seedAssets = [
   { id: "met-01", name: "Airfield rain gauge", ref: "HAL-MET-01", group: "met", unit: "mm/h",
     level: 16.40, min: 0, max: 35, alert: 8, warning: 15, severe: 24, x: 560, y: 214, resp: 1.0,
     note: "Tipping bucket, 1-min resolution." },
+  { id: "met-02", name: "T2 Terminal rain gauge", ref: "HAL-MET-02", group: "met", unit: "mm/h",
+    level: 14.20, min: 0, max: 35, alert: 8, warning: 15, severe: 24, x: 710, y: 230, resp: 1.0,
+    note: "Tipping bucket on Terminal 2 roof. Feeds A-SMGCS drainage model." },
+  { id: "met-03", name: "T5 Terminal rain gauge", ref: "HAL-MET-03", group: "met", unit: "mm/h",
+    level: 13.80, min: 0, max: 35, alert: 8, warning: 15, severe: 24, x: 340, y: 190, resp: 1.0,
+    note: "Tipping bucket on Terminal 5 roof. Western catchment indicator." },
+  { id: "met-04", name: "Stanwell Moor gauge", ref: "HAL-MET-04", group: "met", unit: "mm/h",
+    level: 18.10, min: 0, max: 35, alert: 8, warning: 15, severe: 24, x: 540, y: 420, resp: 1.0,
+    note: "Off-airfield gauge at Stanwell Moor village. Validates approach path rainfall." },
+  { id: "met-05", name: "Colnbrook gauge", ref: "HAL-MET-05", group: "met", unit: "mm/h",
+    level: 15.60, min: 0, max: 35, alert: 8, warning: 15, severe: 24, x: 380, y: 310, resp: 1.0,
+    note: "Village gauge near Colnbrook High Street. Monitors upstream Colne Brook input." },
+  { id: "met-06", name: "Runway 09L rain gauge", ref: "HAL-MET-06", group: "met", unit: "mm/h",
+    level: 12.90, min: 0, max: 35, alert: 8, warning: 15, severe: 24, x: 490, y: 230, resp: 1.0,
+    note: "Flush-mounted gauge at runway 09L threshold. Critical for standing water alerts." },
+  { id: "riv-ct", name: "Colne at Staines Bridge", ref: "EA-COL-15", group: "river", unit: "m",
+    level: 2.62, min: 0, max: 4.2, alert: 2.10, warning: 2.75, severe: 3.40, x: 200, y: 360, resp: 1.15,
+    note: "Downstream of Wraysbury. Feeds EA flood warning system for Staines town centre." },
+  { id: "riv-cb", name: "Colne Brook at Brands Hill", ref: "EA-CB-02", group: "river", unit: "m",
+    level: 1.87, min: 0, max: 3.0, alert: 1.60, warning: 2.10, severe: 2.50, x: 350, y: 280, resp: 1.1,
+    note: "Tributary joining Colne at Colnbrook. Flashy response, 1–2h lag to peak." },
+  { id: "riv-tw", name: "Thames at Datchet", ref: "EA-TH-08", group: "river", unit: "m",
+    level: 3.45, min: 0, max: 5.0, alert: 3.20, warning: 3.80, severe: 4.30, x: 120, y: 340, resp: 1.8,
+    note: "Main river gauge. Slow rise, sets background level for all tributaries." },
+  { id: "drn-w", name: "Western balancing pond", ref: "HAL-BP-W", group: "drainage", unit: "% full",
+    level: 42, min: 0, max: 100, alert: 62, warning: 80, severe: 93, x: 310, y: 220, resp: 1.3,
+    note: "Serves Terminal 5 and western aprons. Discharge to Longford River." },
+  { id: "drn-s", name: "Southern detention basin", ref: "HAL-BP-S", group: "drainage", unit: "% full",
+    level: 55, min: 0, max: 100, alert: 62, warning: 80, severe: 93, x: 420, y: 380, resp: 1.4,
+    note: "Attenuates runoff from southern taxiways before release to Colne." },
+  { id: "drn-rw", name: "Runway 09L/27R catchpit", ref: "HAL-CP-01", group: "drainage", unit: "% full",
+    level: 71, min: 0, max: 100, alert: 65, warning: 85, severe: 95, x: 530, y: 250, resp: 1.5,
+    note: "Collects runway runoff. High level triggers airfield closure protocol." },
+  { id: "gw-sm", name: "Stanwell Moor BH-07", ref: "EA-GW-07", group: "ground", unit: "mAOD",
+    level: 18.45, min: 12, max: 22, alert: 18.2, warning: 19.4, severe: 20.6, x: 500, y: 400, resp: 0.25,
+    note: "Shallow gravel aquifer. Rising groundwater threatens underpass and car parks." },
+  { id: "gw-lh", name: "Longford House BH-03", ref: "EA-GW-03", group: "ground", unit: "mAOD",
+    level: 16.80, min: 12, max: 22, alert: 17.5, warning: 18.8, severe: 20.0, x: 270, y: 340, resp: 0.3,
+    note: "Monitoring well near Longford village. Lags rainfall by 24–48h." },
+  { id: "str-bw", name: "Bourne Chalk spring", ref: "EA-GW-12", group: "ground", unit: "l/s",
+    level: 2.10, min: 0, max: 8, alert: 3.0, warning: 5.0, severe: 6.5, x: 180, y: 300, resp: 0.5,
+    note: "Chalk spring feeding the Colne. Discharge rises 12–24h after recharge events." },
 ];
 
 const seedFeeds = [
@@ -233,27 +276,18 @@ function MapTooltip({ position, children, onClose, onExpand }) {
 function StationTooltip({ asset, mode, params, history, onExpand }) {
   if (!asset) return null;
   const st = statusOf(asset);
-  const proj = mode === "scenario" ? project(asset, params) : null;
   const below = GROUP_META[asset.group].ground === "below";
   return (
-    <div style={{ minWidth: 200 }}>
-      <div style={{ fontSize: 10, color: below ? T.ground : T.blue800, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        {GROUP_META[asset.group].label}
-      </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: T.n1, lineHeight: 1.25, marginTop: 2 }}>{asset.name}</div>
-      <div className="flex items-center" style={{ gap: 6, marginTop: 4 }}>
+    <div style={{ minWidth: 140 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: T.n1, lineHeight: 1.2 }}>{asset.name}</div>
+      <div className="flex items-center" style={{ gap: 5, marginTop: 3 }}>
         <AlertChip status={st}>{LEVELS[st].label}</AlertChip>
+        <span className={`fiq-mono ${(st === "alert" || st === "warning" || st === "severe") ? "fiq-text-pulse" : ""}`}
+          style={{ fontSize: 13, fontWeight: 600, color: LEVELS[st].fill }}>
+          {fmt(asset.level, asset.unit)}
+          <span style={{ fontSize: 9, color: T.n1000, fontWeight: 400 }}> {asset.unit}</span>
+        </span>
       </div>
-      <div className={`fiq-mono ${(st === "alert" || st === "warning" || st === "severe") ? "fiq-text-pulse" : ""}`}
-        style={{ fontSize: 18, fontWeight: 600, color: LEVELS[st].fill, marginTop: 6 }}>
-        {fmt(asset.level, asset.unit)}
-        <span style={{ fontSize: 10, color: T.n1000, fontWeight: 400 }}> {asset.unit}</span>
-      </div>
-      {proj !== null && (
-        <div className="fiq-mono" style={{ fontSize: 11, color: LEVELS[proj !== null ? levelFor(asset, proj) : st].fill, fontWeight: 600, marginTop: 2 }}>
-          → {fmt(proj, asset.unit)} {asset.unit}
-        </div>
-      )}
     </div>
   );
 }
@@ -452,12 +486,43 @@ function StageBoard({ asset, height = 128, width = 30, projected = null }) {
   );
 }
 
-function Spark({ data, color, height = 32 }) {
+function Spark({ data, color, height = 32, ground, maxStage, overspill, forecast, simProgress }) {
+  const hasFc = forecast && forecast.length > 0 && simProgress > 0;
+  /* Build combined chart data: past (solid) + forecast tail (dashed).
+     simProgress tells us where "now" is — forecast data from 0..simProgress
+     has already been observed; forecast[simProgress..] is still predicted. */
+  const chartData = (() => {
+    if (!hasFc) return data.map((v, i) => ({ i, v }));
+    const splitIdx = data.length;
+    const result = [];
+    for (let i = 0; i < data.length; i++) result.push({ i, v: data[i] });
+    for (let j = 0; j < forecast.length; j++) {
+      const idx = splitIdx + j;
+      const fIdx = Math.min(j, forecast[j] !== undefined ? j : forecast.length - 1);
+      result.push({ i: idx, fv: forecast[fIdx] });
+    }
+    return result;
+  })();
+  const pastEnd = data.length;
   return (
     <div style={{ width: "100%", height }}>
       <ResponsiveContainer>
-        <LineChart data={data.map((v, i) => ({ i, v }))} margin={{ top: 3, right: 2, bottom: 0, left: 2 }}>
-          <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.6} dot={false} isAnimationActive={false} />
+        <LineChart data={chartData} margin={{ top: 3, right: 2, bottom: 0, left: 2 }}>
+          {overspill != null && (
+            <ReferenceLine y={overspill} stroke={T.scenario} strokeWidth={1} strokeDasharray="3 2" />
+          )}
+          {maxStage != null && (
+            <ReferenceLine y={maxStage} stroke={T.red800} strokeWidth={1} strokeDasharray="3 2" />
+          )}
+          {ground != null && (
+            <ReferenceLine y={ground} stroke={T.ground} strokeWidth={1} strokeDasharray="2 2" />
+          )}
+          <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.6} dot={false} isAnimationActive={false}
+            connectNulls={false} />
+          {hasFc && (
+            <Line type="monotone" dataKey="fv" stroke={color} strokeWidth={1.6} strokeDasharray="4 3"
+              dot={false} isAnimationActive={false} connectNulls={false} />
+          )}
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -605,17 +670,211 @@ function ScaleBar({ attribution }) {
   const width = metres ? Math.round((nice / metres) * TRACK) : 0;
   const fmtDist = (m) => (m >= 1000 ? `${+(m / 1000).toFixed(1)}km` : `${Math.round(m)}m`);
 
+  const labelStyle = { fontSize: 10, fontWeight: 500, color: T.white, WebkitTextStroke: "1.5px #000", paintOrder: "stroke fill" };
   return (
     <div style={{ width: TRACK }}>
-      <div className="flex justify-between" style={{ fontSize: 10, fontWeight: 500, color: T.n1, paddingBottom: 2 }}>
+      <div className="flex justify-between" style={{ ...labelStyle, paddingBottom: 2 }}>
         <span>0</span><span>{fmtDist(nice / 2)}</span><span>{fmtDist(nice)}</span>
       </div>
       <div style={{ position: "relative", height: 2, background: T.n3, border: `1px solid ${T.white}`, borderRadius: 4 }}>
         <div style={{ position: "absolute", left: 0, top: 0, height: 2, width, background: "#000", borderRadius: 4 }} />
       </div>
-      <div style={{ fontSize: 10, fontWeight: 500, color: T.n1, textAlign: "right", marginTop: 4 }}>{attribution}</div>
+      <div style={{ ...labelStyle, textAlign: "right", marginTop: 4 }}>{attribution}</div>
     </div>
   );
+}
+
+/* RainViewer animated radar overlay — fetches the latest radar frames
+   from the free RainViewer API (no key required) and animates them
+   as semi-transparent tile layers on the map.
+   Note: the free API only serves tiles up to zoom level 7. At higher
+   zooms we show a message prompting the user to zoom out. */
+function RainRadar({ show }) {
+  const map = useMap();
+  const layersRef = useRef([]);
+  const [frames, setFrames] = useState([]);
+  const [frameIdx, setFrameIdx] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [zoom, setZoom] = useState(map.getZoom());
+  const timerRef = useRef(null);
+  const MAX_RAIN_ZOOM = 7;
+
+  useMapEvent("zoomend", () => setZoom(map.getZoom()));
+
+  /* Fetch available radar frames on mount / when shown */
+  useEffect(() => {
+    if (!show) return;
+    let cancelled = false;
+    fetch("https://api.rainviewer.com/public/weather-maps.json")
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const past = data.radar?.past || [];
+        setFrames(past);
+        setFrameIdx(past.length - 1);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [show]);
+
+  /* Add / remove tile layers when frame index, visibility, or zoom changes */
+  useEffect(() => {
+    layersRef.current.forEach((l) => map.removeLayer(l));
+    layersRef.current = [];
+    if (!show || frames.length === 0) return;
+    if (zoom > MAX_RAIN_ZOOM) return; /* tiles don't exist above zoom 7 */
+
+    const frame = frames[frameIdx];
+    if (!frame) return;
+
+    const url = `https://tilecache.rainviewer.com${frame.path}/512/{z}/{x}/{y}/2/1_1.png`;
+    const layer = L.tileLayer(url, {
+      opacity: 0.55,
+      zIndex: 400,
+      maxZoom: MAX_RAIN_ZOOM,
+    });
+    layer.addTo(map);
+    layersRef.current = [layer];
+
+    return () => {
+      layersRef.current.forEach((l) => map.removeLayer(l));
+      layersRef.current = [];
+    };
+  }, [show, frames, frameIdx, zoom, map]);
+
+  /* Animation loop */
+  useEffect(() => {
+    if (playing && show && frames.length > 0 && zoom <= MAX_RAIN_ZOOM) {
+      timerRef.current = setInterval(() => {
+        setFrameIdx((prev) => (prev + 1) % frames.length);
+      }, 800);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [playing, show, frames.length, zoom]);
+
+  if (!show || frames.length === 0) return null;
+
+  const frame = frames[frameIdx];
+  const ts = frame ? new Date(frame.time * 1000) : null;
+  const timeStr = ts ? ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+
+  return (
+    <>
+      <div className="absolute" style={{ left: "50%", bottom: 12, transform: "translateX(-50%)", zIndex: 500,
+        display: "flex", alignItems: "center", gap: 6, background: T.surface1,
+        border: `1px solid ${T.borderPrimary}`, borderRadius: T.r3, padding: "4px 10px",
+        boxShadow: T.shadow, fontSize: 11, color: T.n1, whiteSpace: "nowrap" }}>
+        <FigIcon name="cloudRain" size={14} />
+        <span style={{ color: T.n1000, fontWeight: 500 }}>Rain radar</span>
+        <span style={{ color: T.borderPrimary }}>|</span>
+        <button onClick={() => setFrameIdx((prev) => (prev - 1 + frames.length) % frames.length)}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: T.n1, fontSize: 13 }}
+          aria-label="Previous frame">&#9664;</button>
+        <button onClick={() => setPlaying(!playing)}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: T.blue800, fontSize: 13, fontWeight: 600 }}
+          aria-label={playing ? "Pause" : "Play"}>
+          {playing ? "\u23F8" : "\u25B6"}
+        </button>
+        <button onClick={() => setFrameIdx((prev) => (prev + 1) % frames.length)}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: T.n1, fontSize: 13 }}
+          aria-label="Next frame">&#9654;</button>
+        <span style={{ color: T.borderPrimary }}>|</span>
+        <span className="fiq-mono" style={{ fontWeight: 500 }}>{timeStr}</span>
+        <span style={{ color: T.n1000, fontSize: 10 }}>UTC</span>
+        <span style={{ color: T.borderPrimary }}>|</span>
+        <span style={{ fontSize: 10, color: T.n1000, fontStyle: "italic" }}>Simulated data</span>
+      </div>
+    </>
+  );
+}
+
+/* FakeRainOverlay — dummy rain bands that animate across the Heathrow area
+   for demo purposes. Generates several semi-transparent blue polygon
+   "cells" that drift slowly southwest to northeast, simulating a rain front. */
+function FakeRainOverlay({ show }) {
+  const map = useMap();
+  const layersRef = useRef([]);
+  const frameRef = useRef(0);
+  const rafRef = useRef(null);
+
+  /* Generate rain cell shapes — irregular polygons around Heathrow */
+  const cells = useMemo(() => {
+    const base = [
+      { cx: 51.465, cy: -0.470, r: 0.018, opacity: 0.22, speed: 0.00003 },
+      { cx: 51.475, cy: -0.490, r: 0.022, opacity: 0.18, speed: 0.000025 },
+      { cx: 51.455, cy: -0.455, r: 0.015, opacity: 0.28, speed: 0.000035 },
+      { cx: 51.480, cy: -0.505, r: 0.020, opacity: 0.15, speed: 0.00002 },
+      { cx: 51.445, cy: -0.480, r: 0.012, opacity: 0.32, speed: 0.00004 },
+      { cx: 51.470, cy: -0.510, r: 0.025, opacity: 0.12, speed: 0.000018 },
+      { cx: 51.460, cy: -0.440, r: 0.016, opacity: 0.25, speed: 0.000032 },
+      { cx: 51.485, cy: -0.465, r: 0.019, opacity: 0.20, speed: 0.000028 },
+    ];
+    /* Create irregular polygon points for each cell */
+    return base.map((c) => {
+      const pts = [];
+      const n = 8 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < n; i++) {
+        const angle = (i / n) * Math.PI * 2;
+        const jitter = 0.7 + Math.random() * 0.6;
+        pts.push([
+          c.cx + Math.cos(angle) * c.r * jitter,
+          c.cy + Math.sin(angle) * c.r * jitter * 1.3,
+        ]);
+      }
+      return { ...c, pts };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!show) {
+      layersRef.current.forEach((l) => map.removeLayer(l));
+      layersRef.current = [];
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      return;
+    }
+
+    /* Create initial polygon layers */
+    layersRef.current = cells.map((c, i) => {
+      const poly = L.polygon(c.pts, {
+        color: "transparent",
+        fillColor: "#3B82F6",
+        fillOpacity: c.opacity,
+        weight: 0,
+        interactive: false,
+      });
+      poly.addTo(map);
+      return poly;
+    });
+
+    /* Animate: drift cells northeast and cycle positions */
+    let last = performance.now();
+    const animate = (now) => {
+      const dt = now - last;
+      last = now;
+      layersRef.current.forEach((layer, i) => {
+        const c = cells[i];
+        const newPts = layer.getLatLngs()[0].map((ll) => [
+          ll.lat + c.speed * dt,
+          ll.lng + c.speed * dt * 0.6,
+        ]);
+        /* Wrap around if cell drifts too far northeast */
+        if (newPts[0][0] > 51.52) {
+          newPts.forEach((p) => { p[0] -= 0.07; p[1] -= 0.05; });
+        }
+        layer.setLatLngs(newPts);
+      });
+      rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      layersRef.current.forEach((l) => map.removeLayer(l));
+      layersRef.current = [];
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [show, cells, map]);
+
+  return null;
 }
 
 /* Figma FM-v8-Move-tools, wired to the map. The concept shows
@@ -623,41 +882,187 @@ function ScaleBar({ attribution }) {
    and the remaining two are the zoom pair. */
 function MoveTools() {
   const map = useMap();
-  const round = {
-    background: T.surface1, border: `1px solid ${T.borderPrimary}`, borderRadius: T.r32,
-    width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-    color: T.n1, cursor: "pointer", boxShadow: T.shadow,
+  const base = {
+    width: 34, height: 34, borderRadius: "50%", display: "flex", alignItems: "center",
+    justifyContent: "center", cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+    background: T.surface1, border: `1px solid ${T.borderPrimary}`, color: T.n1,
   };
+  const tools = [
+    { id: "north", icon: "northStar", title: "Reset view",
+      onClick: () => { map.setView(HEATHROW_VIEW.center, HEATHROW_VIEW.zoom, { duration: 0.4 }); } },
+    { id: "zoomIn", icon: "zoom", title: "Zoom in",
+      onClick: () => { map.zoomIn(1, { animate: true }); } },
+    { id: "zoomOut", icon: "zoom", title: "Zoom out",
+      onClick: () => { map.zoomOut(1, { animate: true }); } },
+  ];
   return (
-    <div className="absolute flex flex-col" style={{ right: 8, top: 8, gap: 4, zIndex: 500 }}>
-      <button style={round} title="Reset view" aria-label="Reset view"
-        onClick={() => map.setView(HEATHROW_VIEW.center, HEATHROW_VIEW.zoom)}>
-        <FigIcon name="northStar" />
-      </button>
-      <button style={round} title="Zoom in" aria-label="Zoom in" onClick={() => map.zoomIn()}>
-        <FigIcon name="zoom" />
-      </button>
-      <button style={round} title="Zoom to terminals" aria-label="Zoom to terminals"
-        onClick={() => map.setView(TERMINAL_VIEW.center, TERMINAL_VIEW.zoom)}>
-        <FigIcon name="pan" />
-      </button>
+    <div className="absolute flex flex-col" style={{ right: 12, top: 12, gap: 8, zIndex: 500 }}>
+      {tools.map((t) => (
+        <button key={t.id} style={{ ...base, transform: t.id === "zoomOut" ? "scaleX(-1)" : undefined }}
+          title={t.title} aria-label={t.title} onClick={t.onClick}>
+          <FigIcon name={t.icon} size={18} />
+        </button>
+      ))}
     </div>
   );
 }
 
 /* Figma FPBasemapIcon — switches the tile layer. */
-function BasemapToggle({ basemap, setBasemap }) {
+function BasemapToggle({ basemap, setBasemap, showRain, setShowRain }) {
+  const [open, setOpen] = useState(false);
   const next = basemap === "osm" ? "imagery" : "osm";
+  const overlays = [
+    { k: "rain", label: "Rain radar", icon: "cloudRain", active: showRain, toggle: () => setShowRain(!showRain) },
+    { k: "wind", label: "Wind", icon: "mode3" },
+    { k: "temp", label: "Temperature", icon: "mode1" },
+    { k: "pressure", label: "Pressure", icon: "mode2" },
+  ];
   return (
-    <button onClick={() => setBasemap(next)} title={`Switch to ${BASEMAPS[next].label}`}
-      aria-label={`Switch to ${BASEMAPS[next].label}`}
-      style={{ position: "relative", width: 32, height: 32, borderRadius: T.r2, border: `1px solid ${T.white}`,
-        boxShadow: T.shadow, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
-        color: T.white, cursor: "pointer" }}>
-      <img src={IMG.basemapThumb} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-      <span style={{ position: "relative", display: "flex" }}><FigIcon name="goToMap" /></span>
-    </button>
+    <div style={{ position: "relative" }}>
+      <button onClick={() => setOpen(!open)} title="Basemap & overlays"
+        aria-label="Basemap & overlays"
+        style={{ position: "relative", width: 32, height: 32, borderRadius: T.r2, border: `1px solid ${T.white}`,
+          boxShadow: T.shadow, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
+          color: T.n1, cursor: "pointer" }}>
+        <img src={IMG.basemapThumb} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+        <span style={{ position: "relative", display: "flex" }}><FigIcon name="goToMap" /></span>
+      </button>
+      {open && (
+        <div style={{ position: "absolute", bottom: 40, right: 0, background: T.surface1,
+          border: `1px solid ${T.borderPrimary}`, borderRadius: T.r3, padding: 8, boxShadow: T.shadow,
+          zIndex: 600, minWidth: 150 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: T.n1000, textTransform: "uppercase",
+            letterSpacing: "0.06em", padding: "0 4px 6px" }}>Basemap</div>
+          <button onClick={() => { setBasemap(next); setOpen(false); }}
+            style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 8px",
+              borderRadius: T.r2, fontSize: 12, color: T.n1, cursor: "pointer", border: "none",
+              background: "transparent" }}>
+            Switch to {BASEMAPS[next].label}
+          </button>
+          <div style={{ borderTop: `1px solid ${T.borderPrimary}`, margin: "6px 0" }} />
+          <div style={{ fontSize: 10, fontWeight: 600, color: T.n1000, textTransform: "uppercase",
+            letterSpacing: "0.06em", padding: "0 4px 6px" }}>Overlays</div>
+          {overlays.map((o) => (
+            <button key={o.k}
+              onClick={o.toggle ? () => { o.toggle(); setOpen(false); } : undefined}
+              disabled={!o.toggle}
+              style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
+                padding: "5px 8px", borderRadius: T.r2, fontSize: 12,
+                color: o.active ? T.blue800 : o.toggle ? T.n1 : T.n3,
+                cursor: o.toggle ? "pointer" : "not-allowed",
+                background: o.active ? T.blue100 : "transparent",
+                border: "none", fontWeight: o.active ? 600 : 400 }}>
+              <FigIcon name={o.icon} size={12} />
+              {o.label}
+              {o.toggle ? (
+                <span style={{ marginLeft: "auto", fontSize: 10, color: o.active ? T.blue800 : T.n1000 }}>
+                  {o.active ? "On" : "Off"}
+                </span>
+              ) : (
+                <span style={{ fontSize: 9, color: T.n3, marginLeft: "auto" }}>Soon</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
+}
+
+/* GroupSelectOverlay — handles rectangle/circle/freehand drawing on the map
+   when a group-select subtool is active. Captures mouse events, draws a
+   temporary shape overlay, and on release selects all assets inside. */
+function GroupSelectOverlay({ active, subTool, assets, onSelectIds }) {
+  const map = useMap();
+  const drawingRef = useRef(null);
+  const startRef = useRef(null);
+  const shapeRef = useRef(null);
+
+  useEffect(() => {
+    if (!active) return;
+
+    const onDown = (e) => {
+      startRef.current = e.latlng;
+      /* Remove previous shape */
+      if (shapeRef.current) { map.removeLayer(shapeRef.current); shapeRef.current = null; }
+    };
+
+    const onMove = (e) => {
+      if (!startRef.current) return;
+      if (shapeRef.current) { map.removeLayer(shapeRef.current); shapeRef.current = null; }
+      const start = startRef.current;
+      const end = e.latlng;
+      if (subTool === "rectangle") {
+        const bounds = L.latLngBounds(start, end);
+        shapeRef.current = L.rectangle(bounds, { color: T.blue800, weight: 2, fillOpacity: 0.1, dashArray: "6 4" }).addTo(map);
+      } else if (subTool === "circle") {
+        const radius = start.distanceTo(end);
+        shapeRef.current = L.circle(start, { radius, color: T.blue800, weight: 2, fillOpacity: 0.1, dashArray: "6 4" }).addTo(map);
+      } else if (subTool === "freehand") {
+        if (!drawingRef.current) drawingRef.current = [];
+        drawingRef.current.push(end);
+        shapeRef.current = L.polyline(drawingRef.current, { color: T.blue800, weight: 2, fillOpacity: 0.1, dashArray: "6 4" }).addTo(map);
+      }
+    };
+
+    const onUp = (e) => {
+      if (!startRef.current) return;
+      const start = startRef.current;
+      const end = e.latlng;
+      let selected = [];
+
+      if (subTool === "rectangle") {
+        const bounds = L.latLngBounds(start, end);
+        selected = assets.filter((a) => bounds.contains(L.latLng(a.lat || latlngFor(a)[0], a.lng || latlngFor(a)[1])));
+      } else if (subTool === "circle") {
+        const radius = start.distanceTo(end);
+        selected = assets.filter((a) => {
+          const ll = latlngFor(a);
+          return start.distanceTo(L.latLng(ll[0], ll[1])) <= radius;
+        });
+      } else if (subTool === "freehand" && drawingRef.current && drawingRef.current.length > 2) {
+        const poly = L.polygon(drawingRef.current);
+        selected = assets.filter((a) => {
+          const ll = latlngFor(a);
+          return poly.getBounds().contains(L.latLng(ll[0], ll[1])) && pointInPolygon([ll[0], ll[1]], drawingRef.current);
+        });
+      }
+
+      if (selected.length > 0) {
+        onSelectIds(selected.map((a) => a.id));
+      }
+      startRef.current = null;
+      drawingRef.current = null;
+      if (shapeRef.current) { map.removeLayer(shapeRef.current); shapeRef.current = null; }
+    };
+
+    map.on("mousedown", onDown);
+    map.on("mousemove", onMove);
+    map.on("mouseup", onUp);
+    return () => {
+      map.off("mousedown", onDown);
+      map.off("mousemove", onMove);
+      map.off("mouseup", onUp);
+      if (shapeRef.current) { map.removeLayer(shapeRef.current); shapeRef.current = null; }
+      startRef.current = null;
+      drawingRef.current = null;
+    };
+  }, [active, subTool, assets, onSelectIds, map]);
+
+  return null;
+}
+
+/* Point-in-polygon test for freehand selection */
+function pointInPolygon(point, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lng || polygon[i][1], yi = polygon[i].lat || polygon[i][0];
+    const xj = polygon[j].lng || polygon[j][1], yj = polygon[j].lat || polygon[j][0];
+    if (((yi > point[1]) !== (yj > point[1])) && (point[0] < (xj - xi) * (point[1] - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
 
 function AssetMarkers({ assets, mode, params, selectedId, onSelect }) {
@@ -682,63 +1087,198 @@ function AssetMarkers({ assets, mode, params, selectedId, onSelect }) {
   });
 }
 
+function MapEvents({ onCursorMove, onMapClick }) {
+  useMapEvent("mousemove", (e) => onCursorMove({ lat: e.latlng.lat, lng: e.latlng.lng }));
+  useMapEvent("click", onMapClick);
+  return null;
+}
+
+function PanToAsset({ assets, panToId, onDone }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!panToId) return;
+    const asset = assets.find((a) => a.id === panToId);
+    if (asset) {
+      const ll = latlngFor(asset);
+      map.flyTo(ll, Math.max(map.getZoom(), 15), { duration: 0.6 });
+    }
+    onDone();
+  }, [panToId]);
+  return null;
+}
+
 function HeathrowMap({ assets, mode, params, selectedId, onSelect, showScheme,
                       eaFloods, eaSelected, setEaSelected, showEa, histories,
-                      onExpandStation, onExpandEa }) {
+                      onExpandStation, onExpandEa, activeTool, subTool, cursorPos, setCursorPos,
+                      panToId, setPanToId }) {
   const [basemap, setBasemap] = useState("osm");
+  const [showRain, setShowRain] = useState(false);
   const tiles = BASEMAPS[basemap];
   const [tooltip, setTooltip] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [measurePoints, setMeasurePoints] = useState([]);
+  const [measureResult, setMeasureResult] = useState(null);
+  const [drawingShape, setDrawingShape] = useState(null);
+  const [queryResult, setQueryResult] = useState(null);
+  const toolRef = useRef({ activeTool, subTool });
+  toolRef.current = { activeTool, subTool };
 
   const handleStationClick = (a) => {
-    const st = statusOf(a);
-    const proj = mode === "scenario" ? project(a, params) : null;
-    setTooltip({
-      type: "station",
-      position: latlngFor(a),
-      data: a,
-    });
-    onSelect(a.id);
+    const asset = typeof a === "string" ? assets.find((x) => x.id === a) : a;
+    if (!asset) return;
+    if (toolRef.current.activeTool === "cursorSelect") {
+      setTooltip({
+        type: "station",
+        position: latlngFor(asset),
+        data: asset,
+      });
+      onSelect(asset.id);
+    } else if (toolRef.current.activeTool === "rectangleSelect" || toolRef.current.activeTool === "groupSelect") {
+      setSelectedIds((prev) => prev.includes(asset.id) ? prev.filter((id) => id !== asset.id) : [...prev, asset.id]);
+    } else if (toolRef.current.activeTool === "pointQuery") {
+      setQueryResult({ lat: latlngFor(asset)[0], lng: latlngFor(asset)[1], asset });
+    }
   };
 
   const handleEaClick = (f) => {
-    if (f.code === eaSelected) {
-      setTooltip(null);
-      setEaSelected(null);
-    } else {
-      setTooltip({
-        type: "ea",
-        position: [f.lat, f.long],
-        data: f,
+    const flood = typeof f === "string" || f === null ? f : f.code;
+    const floodObj = typeof flood === "string" ? eaFloods?.items?.find((x) => x.code === flood) : null;
+    if (toolRef.current.activeTool === "cursorSelect") {
+      if (flood === eaSelected) {
+        setTooltip(null);
+        setEaSelected(null);
+      } else if (floodObj) {
+        setTooltip({
+          type: "ea",
+          position: [floodObj.lat, floodObj.long],
+          data: floodObj,
+        });
+        setEaSelected(flood);
+      }
+    } else if (toolRef.current.activeTool === "pointQuery" && floodObj) {
+      setQueryResult({ lat: floodObj.lat, lng: floodObj.long, flood: floodObj });
+    }
+  };
+
+  const handleMapClick = (e) => {
+    const tool = toolRef.current.activeTool;
+    const sub = toolRef.current.subTool;
+    if (tool === "pointQuery") {
+      setQueryResult({ lat: e.latlng.lat, lng: e.latlng.lng });
+    } else if (tool === "measure" && sub === "distance") {
+      setMeasurePoints((prev) => {
+        const next = [...prev, [e.latlng.lat, e.latlng.lng]];
+        if (next.length >= 2) {
+          let total = 0;
+          for (let i = 1; i < next.length; i++) {
+            total += L.latLng(next[i - 1]).distanceTo(L.latLng(next[i]));
+          }
+          setMeasureResult({ points: next, distance: total });
+          return [];
+        }
+        return next;
       });
-      setEaSelected(f.code);
+    } else if (tool === "measure" && sub === "transect") {
+      setMeasurePoints((prev) => {
+        const next = [...prev, [e.latlng.lat, e.latlng.lng]];
+        if (next.length >= 2) {
+          setMeasureResult({ points: next, type: "transect" });
+          return [];
+        }
+        return next;
+      });
+    } else {
+      /* For cursorSelect and group tools, map background clicks close tooltips */
+      setTooltip(null);
     }
   };
 
   const closeTooltip = () => setTooltip(null);
 
+  const getCursorStyle = () => {
+    switch (activeTool) {
+      case "rectangleSelect": return "crosshair";
+      case "measure": return "crosshair";
+      case "pointQuery": return "crosshair";
+      default: return "";
+    }
+  };
+
   return (
-    <div className="absolute inset-0" style={{ background: T.land, zIndex: 0 }}>
+    <div className="absolute inset-0" style={{ background: T.land, zIndex: 0, cursor: getCursorStyle() }}>
       <MapContainer center={HEATHROW_VIEW.center} zoom={HEATHROW_VIEW.zoom}
         minZoom={HEATHROW_VIEW.minZoom} maxZoom={HEATHROW_VIEW.maxZoom}
         zoomControl={false} attributionControl={false}
-        className="w-full h-full" style={{ background: T.land }}>
+        className="w-full h-full" style={{ background: T.land, cursor: getCursorStyle() }}>
         <TileLayer key={basemap} url={tiles.url} maxZoom={tiles.maxZoom} />
+        <RainRadar show={showRain} />
+        <FakeRainOverlay show={showRain} />
+        <MapEvents onCursorMove={setCursorPos} onMapClick={handleMapClick} />
+        <PanToAsset assets={assets} panToId={panToId} onDone={() => setPanToId(null)} />
+        <GroupSelectOverlay active={activeTool === "rectangleSelect"} subTool={subTool}
+          assets={assets} onSelectIds={(ids) => setSelectedIds(ids)} />
 
         {/* Longford River — crosses the airfield, culverted under 09L/27R */}
         <Polyline positions={LONGFORD_RIVER} pathOptions={{ color: T.waterDeep, weight: 3.4, opacity: 0.8 }} />
-
-        {/* The scheme: reservoir body, then the dashed boundary */}
-        <Polygon positions={SCHEME.water}
-          pathOptions={{ color: T.waterDeep, weight: 2, fillColor: T.water, fillOpacity: 0.5 }} />
-        {showScheme && (
-          <Polygon positions={SCHEME.boundary}
-            pathOptions={{ color: T.orangeP1, weight: 2, dashArray: "6 4", fill: false, opacity: 0.9 }} />
-        )}
 
         <AssetMarkers assets={assets} mode={mode} params={params} selectedId={selectedId} onSelect={handleStationClick} />
 
         {/* EA national warnings sit above the scheme's own telemetry */}
         {showEa && <EaFloodLayer data={eaFloods} selectedCode={eaSelected} onSelect={handleEaClick} />}
+
+        {/* Measure line while drawing */}
+        {measurePoints.length > 0 && (
+          <Polyline positions={measurePoints}
+            pathOptions={{ color: T.blue700, weight: 3, dashArray: "6 4" }} />
+        )}
+        {/* Measure result line */}
+        {measureResult && measureResult.points && (
+          <>
+            <Polyline positions={measureResult.points}
+              pathOptions={{ color: T.blue700, weight: 3 }} />
+            {measureResult.points.map((p, i) => (
+              <CircleMarker key={i} center={p} radius={5}
+                pathOptions={{ color: T.white, fillColor: T.blue700, fillOpacity: 1, weight: 2 }} />
+            ))}
+          </>
+        )}
+
+        {/* Point query result marker */}
+        {queryResult && (
+          <>
+            <CircleMarker center={[queryResult.lat, queryResult.lng]} radius={8}
+              pathOptions={{ color: T.white, fillColor: T.blue700, fillOpacity: 1, weight: 3 }} />
+            <Popup position={[queryResult.lat, queryResult.lng]}
+              maxWidth={280} closeButton={true} onClose={() => setQueryResult(null)}>
+              <div style={{ padding: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Point Query</div>
+                <div style={{ fontSize: 11, color: T.n2, marginBottom: 4 }}>
+                  Lat: {queryResult.lat.toFixed(6)}<br/>
+                  Lng: {queryResult.lng.toFixed(6)}
+                </div>
+                {queryResult.asset && (
+                  <div style={{ fontSize: 11 }}>
+                    <strong>{queryResult.asset.name}</strong><br/>
+                    Status: {statusOf(queryResult.asset)}<br/>
+                    Level: {queryResult.asset.level.toFixed(2)}m
+                  </div>
+                )}
+                {queryResult.flood && (
+                  <div style={{ fontSize: 11 }}>
+                    <strong>{queryResult.flood.label}</strong><br/>
+                    Severity: {queryResult.flood.severity}
+                  </div>
+                )}
+              </div>
+            </Popup>
+          </>
+        )}
+
+        {/* Selected assets highlight */}
+        {selectedIds.length > 0 && assets.filter((a) => selectedIds.includes(a.id)).map((a) => (
+          <CircleMarker key={`sel-${a.id}`} center={latlngFor(a)} radius={20}
+            pathOptions={{ color: T.blue500, fillColor: T.blue500, fillOpacity: 0.15, weight: 2, dashArray: "4 4" }} />
+        ))}
 
         {/* Map tooltip for station or EA warning */}
         {tooltip && (
@@ -754,10 +1294,36 @@ function HeathrowMap({ assets, mode, params, selectedId, onSelect, showScheme,
           </MapTooltip>
         )}
 
+        {/* Measure result overlay */}
+        {measureResult && (
+          <div className="absolute" style={{ top: 12, left: 56, zIndex: 500, background: T.surface1,
+            border: `1px solid ${T.borderPrimary}`, borderRadius: T.r3, padding: "6px 10px",
+            boxShadow: T.shadow, fontSize: 12, color: T.n1, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 600 }}>
+              {measureResult.type === "transect"
+                ? `Transect: ${L.latLng(measureResult.points[0]).distanceTo(L.latLng(measureResult.points[1])).toFixed(0)}m`
+                : `Distance: ${measureResult.distance.toFixed(0)}m`}
+            </span>
+            <button onClick={() => setMeasureResult(null)} style={{ background: "none", border: "none",
+              color: T.n2, cursor: "pointer", padding: 0, fontSize: 14, lineHeight: 1 }}>&times;</button>
+          </div>
+        )}
+
+        {/* Group selection count */}
+        {selectedIds.length > 0 && (
+          <div className="absolute" style={{ top: 12, left: 56, zIndex: 500, background: T.surface1,
+            border: `1px solid ${T.borderPrimary}`, borderRadius: T.r3, padding: "6px 10px",
+            boxShadow: T.shadow, fontSize: 12, color: T.n1, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 600 }}>{selectedIds.length} asset{selectedIds.length !== 1 ? "s" : ""} selected</span>
+            <button onClick={() => setSelectedIds([])} style={{ background: "none", border: "none",
+              color: T.n2, cursor: "pointer", padding: 0, fontSize: 14, lineHeight: 1 }}>&times;</button>
+          </div>
+        )}
+
         <MoveTools />
         <div className="fiq absolute flex items-end" style={{ right: 8, bottom: 8, gap: 8, zIndex: 500 }}>
           <ScaleBar attribution={tiles.attribution} />
-          <BasemapToggle basemap={basemap} setBasemap={setBasemap} />
+          <BasemapToggle basemap={basemap} setBasemap={setBasemap} showRain={showRain} setShowRain={setShowRain} />
         </div>
       </MapContainer>
     </div>
@@ -878,13 +1444,13 @@ function HeathrowMapSchematic({ assets, mode, params, selectedId, onSelect, show
    are pushed across rather than overlaid. */
 const NAV_W = { collapsed: 64, expanded: 216 };
 
-function SideNav({ mode, setMode, panels, togglePanel, expanded, setExpanded }) {
+function SideNav({ mode, setMode, panels, togglePanel, expanded, setExpanded, page, setPage }) {
   const navItems = [
     { k: "live", icon: "mode1", label: "Eyes on the system", type: "mode" },
     { k: "incidents", icon: "mode2", label: "Incident management", type: "mode" },
-    { k: "scenario", icon: "mode3", label: "Emergency management", type: "mode" },
-    { k: "incidents_panel", icon: "mode4", label: "Communications", type: "panel" },
-    { k: "comms", icon: "mode5", label: "Dashboards", type: "panel" },
+    { k: "emergency", icon: "mode3", label: "Emergency management", type: "page" },
+    { k: "comms_page", icon: "mode4", label: "Communications", type: "page" },
+    { k: "dashboards", icon: "mode5", label: "Dashboards", type: "page" },
   ];
 
   const navItemStyle = (active, accent) => ({
@@ -907,21 +1473,23 @@ function SideNav({ mode, setMode, panels, togglePanel, expanded, setExpanded }) 
         transition: "width .18s ease",
       }}>
       <div className="flex items-center" style={{ gap: 8, overflow: "hidden" }}>
-        <FloodIqMark size={expanded ? 20 : 24} expanded={expanded} />
-        {!expanded && (
-          <span style={{ fontSize: 13, fontWeight: 600, color: T.n1, whiteSpace: "nowrap", opacity: expanded ? 1 : 0, transition: "opacity .12s ease" }}>
-            Flood IQ
-          </span>
-        )}
+        <FloodIqMark size={24} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: T.n1, whiteSpace: "nowrap", opacity: expanded ? 1 : 0, transition: "opacity .12s ease" }}>
+          Flood IQ
+        </span>
       </div>
 
       <div className="flex flex-col flex-1 min-h-0" style={{ gap: 8 }}>
         <div className="flex flex-col" style={{ gap: 8 }}>
           {navItems.map((item) => {
-            const isActive = item.type === "mode" ? mode === item.k : panels[item.k];
-            const accent = item.k === "scenario" ? T.scenario : item.k === "network" ? T.n600 : T.blue800;
+            const isActive = item.type === "mode" ? mode === item.k : item.type === "page" ? page === item.k : panels[item.k];
+            const accent = item.k === "scenario" ? T.scenario : T.blue800;
             return (
-              <button key={item.k} onClick={() => item.type === "mode" ? setMode(item.k) : togglePanel(item.k)}
+              <button key={item.k} onClick={() => {
+                if (item.type === "mode") { setMode(item.k); setPage(null); }
+                else if (item.type === "page") { setPage(item.k); setMode("live"); }
+                else togglePanel(item.k);
+              }}
                 title={expanded ? undefined : item.label} aria-label={item.label}
                 style={{ ...navItemStyle(isActive, accent), color: isActive ? T.white : T.n1100 }}>
                 <FigIcon name={item.icon} />
@@ -964,24 +1532,14 @@ function SideNav({ mode, setMode, panels, togglePanel, expanded, setExpanded }) 
    what an operator scans for, so keep both and let the tier lead. */
 const badgeCopy = (a) => `${LEVELS[statusOf(a)].label.replace("Flood ", "")} · ${a.name}`;
 
-function TopNav({ assets, published, onChipClick, mode, commsOpen, setCommsOpen, unreadFeeds }) {
-  /* Worst first, so the badges lead with the thing that matters. */
-  const ranked = useMemo(
-    () => assets
-      .filter((a) => statusOf(a) !== "normal")
-      .sort((x, y) => LEVEL_ORDER.indexOf(statusOf(y)) - LEVEL_ORDER.indexOf(statusOf(x))),
-    [assets]
-  );
-  const shown = ranked.slice(0, 3);
-  const overflow = ranked.length - shown.length;
-
+function TopNav({ published, mode, setMode, commsOpen, setCommsOpen, unreadFeeds, storm, setStorm }) {
   return (
     <header className="fiq flex items-center shrink-0"
       style={{ height: 64, padding: "0 20px", background: T.n400, borderBottom: `1px solid ${T.n600}`, gap: 20 }}>
       {/* Published stamp yields width first — the forecast is the more
           useful of the two once the nav expands. */}
       <div className="flex items-baseline min-w-0" style={{ gap: 4, flex: "0 1 auto" }}>
-        <span className="shrink-0" style={{ fontSize: 12, color: T.n1000 }}>Last published:</span>
+        <span className="shrink-0" style={{ fontSize: 12, color: T.n1000 }}>Last updated:</span>
         <span className="truncate" style={{ fontSize: 12, color: T.n1100 }}>{published}</span>
       </div>
 
@@ -994,39 +1552,42 @@ function TopNav({ assets, published, onChipClick, mode, commsOpen, setCommsOpen,
         </span>
       </div>
 
+      {/* Simulate storm — toggles storm mode. When active, mode changes to forecast. */}
+      <div className="flex items-center shrink-0">
+        <button onClick={() => {
+            if (storm) {
+              setStorm(false);
+              setMode("live");
+            } else {
+              setStorm(true);
+              setMode("forecast");
+            }
+          }}
+          style={{ fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: T.r2,
+            background: storm ? T.red800 : T.surface1, color: storm ? T.white : T.n1,
+            border: `1px solid ${storm ? T.red800 : T.borderPrimary}`, cursor: "pointer",
+            whiteSpace: "nowrap" }}>
+          {storm ? "\u25a0 Stop storm" : "\u25b6 Simulate storm"}
+        </button>
+      </div>
+
       <div className="flex items-baseline shrink-0" style={{ gap: 4 }}>
         <span style={{ fontSize: 12, color: T.n1000 }}>Mode:</span>
-        <span style={{ fontSize: 12, color: mode === "scenario" ? T.scenario : mode === "incidents" ? T.blue800 : T.n1100, fontWeight: (mode === "scenario" || mode === "incidents") ? 600 : 400 }}>
-          {mode === "scenario" ? "Scenario" : mode === "incidents" ? "Incidents" : "Live"}
+        <span style={{ fontSize: 12, color: mode === "scenario" ? T.scenario : mode === "incidents" ? T.blue800 : mode === "forecast" ? T.red800 : T.n1100, fontWeight: (mode === "scenario" || mode === "incidents" || mode === "forecast") ? 600 : 400 }}>
+          {mode === "scenario" ? "Scenario" : mode === "incidents" ? "Incidents" : mode === "forecast" ? "Forecast" : "Live"}
         </span>
       </div>
 
       <div className="flex-1" />
 
       <div className="flex items-center shrink-0" style={{ gap: 4 }}>
-        {shown.length === 0 && <AlertChip status="normal">All stations normal</AlertChip>}
-        {shown.map((a) => (
-          <AlertChip key={a.id} status={statusOf(a)} onClick={() => onChipClick(a.id)}>
-            {badgeCopy(a)}
-          </AlertChip>
-        ))}
-        {overflow > 0 && (
-          <button onClick={() => onChipClick(ranked[shown.length].id)}
-            style={{ fontSize: 12, fontWeight: 500, color: T.n1, padding: "0 4px", cursor: "pointer" }}>
-            +{overflow}
-          </button>
-        )}
-
-        <div style={{ width: 1, height: 24, background: T.n600, margin: "0 6px" }} />
-
-        {/* Comms drawer toggle — feeds and notify live behind this. */}
         <button onClick={() => setCommsOpen(!commsOpen)} aria-expanded={commsOpen}
           style={{ position: "relative", display: "flex", alignItems: "center", gap: 6,
             fontSize: 12, fontWeight: 600, padding: "6px 10px", borderRadius: T.r2,
             background: commsOpen ? T.n1 : T.surface1, color: commsOpen ? T.white : T.n1,
             border: `1px solid ${commsOpen ? T.n1 : T.borderPrimary}` }}>
-          <FigIcon name="mode5" size={14} />
-          Comms
+          <FigIcon name="commsFeed" size={14} />
+          Comms feed
           {unreadFeeds > 0 && (
             <span className="fiq-mono" style={{ background: T.red800, color: T.white, fontSize: 10, fontWeight: 600,
               borderRadius: T.r16, padding: "0 5px", lineHeight: "15px" }}>{unreadFeeds}</span>
@@ -1037,32 +1598,81 @@ function TopNav({ assets, published, onChipClick, mode, commsOpen, setCommsOpen,
   );
 }
 
-function MapTools() {
+function MapTools({ activeTool, setActiveTool, subTool, setSubTool }) {
   const card = { background: T.surface1, border: `1px solid ${T.borderPrimary}`, borderRadius: T.r4, padding: 8, boxShadow: T.shadow };
-  const tool = { display: "flex", alignItems: "center", justifyContent: "center", padding: 4, borderRadius: T.r2, color: T.n1, cursor: "pointer" };
+  const toolBase = { display: "flex", alignItems: "center", justifyContent: "center", padding: 4, borderRadius: T.r2, color: T.n1, cursor: "pointer" };
+  const toolActive = { ...toolBase, background: T.blue800, color: T.white };
+  const tools = [
+    { n: "cursorSelect", t: "Select", opts: false },
+    { n: "rectangleSelect", t: "Rectangle select", opts: ["rectangle", "circle", "freehand"] },
+    { n: "measure", t: "Measure", opts: ["distance", "transect"] },
+    { n: "pointQuery", t: "Point query", opts: false },
+  ];
+  const [openMenu, setOpenMenu] = useState(null);
   return (
     <>
       <div className="absolute flex flex-col" style={{ left: 8, top: 8, gap: 8, ...card, width: 40, zIndex: 500 }}>
-        {[
-          { n: "cursorSelect", t: "Select", opts: false },
-          { n: "rectangleSelect", t: "Rectangle select", opts: true },
-          { n: "measure", t: "Measure", opts: true },
-          { n: "pointQuery", t: "Point query", opts: false },
-        ].map((b) => (
-          <button key={b.n} style={{ ...tool, position: "relative" }} title={b.t} aria-label={b.t}>
-            <FigIcon name={b.n} />
-            {/* corner dot marks a tool with further options, per the Figma */}
-            {b.opts && <img src={IMG.badgeDot} alt="" style={{ position: "absolute", right: 2.5, bottom: 2.5, width: 2.5, height: 2.5 }} />}
-          </button>
+        {tools.map((b) => (
+          <div key={b.n} style={{ position: "relative" }}>
+            <button
+              style={activeTool === b.n ? toolActive : toolBase}
+              title={b.t} aria-label={b.t}
+              onClick={() => {
+                if (b.opts) {
+                  if (activeTool === b.n) {
+                    setOpenMenu(openMenu === b.n ? null : b.n);
+                  } else {
+                    setActiveTool(b.n);
+                    setSubTool(b.n === "rectangleSelect" ? "rectangle" : "distance");
+                    setOpenMenu(null);
+                  }
+                } else {
+                  setActiveTool(b.n);
+                  setOpenMenu(null);
+                }
+              }}>
+              <FigIcon name={b.n} />
+              {b.opts && <img src={IMG.badgeDot} alt="" style={{ position: "absolute", right: 2.5, bottom: 2.5, width: 2.5, height: 2.5 }} />}
+            </button>
+            {openMenu === b.n && b.opts && (
+              <div style={{ position: "absolute", left: 48, top: 0, background: T.surface1, border: `1px solid ${T.borderPrimary}`,
+                borderRadius: T.r3, padding: 4, boxShadow: T.shadow, zIndex: 600, minWidth: 120 }}>
+                {b.opts.map((s) => {
+                  const iconMap = { rectangle: "rectSelect", circle: "ellipticalSelect", freehand: "freeformSelect", transect: "transect", distance: "toolDistance" };
+                  return (
+                    <button key={s} onClick={() => { setSubTool(s); setActiveTool(b.n); setOpenMenu(null); }}
+                      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "6px 8px", borderRadius: T.r2,
+                        fontSize: 12, color: subTool === s && activeTool === b.n ? T.blue700 : T.n1,
+                        background: subTool === s && activeTool === b.n ? T.blue100 : "transparent", cursor: "pointer",
+                        border: "none", fontWeight: subTool === s && activeTool === b.n ? 600 : 400 }}>
+                      {iconMap[s] && <FigIcon name={iconMap[s]} size={14} />}
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         ))}
       </div>
     </>
   );
 }
 
+/* what3words-like pseudo generator for demo - not a real w3w API */
+function w3wFromLatLng(lat, lng) {
+  const words = ["filled","count","soap","river","bank","cloud","stone","green","water","deep","bridge","field","market","garden","valley","forest","bridge","harbor","island","meadow"];
+  const hash = Math.abs(Math.sin(lat * 12.9898 + lng * 78.233) * 43758.5453) % 1;
+  const i1 = Math.floor(hash * words.length);
+  const i2 = Math.floor(((hash * 1.7) % 1) * words.length);
+  const i3 = Math.floor(((hash * 2.3) % 1) * words.length);
+  return `///${words[i1]}.${words[i2]}.${words[i3]}`;
+}
+
 /* Simplified legend: the dot scale, EA warnings in force, and a count per
    tier so the map has a running tally the way Flood Predictor does. */
-function Legend({ assets, eaFloods, showEa, setShowEa }) {
+function Legend({ assets, eaFloods, showEa, setShowEa, dimmed }) {
+  const [collapsed, setCollapsed] = useState(false);
   const counts = useMemo(() => {
     const c = { normal: 0, alert: 0, warning: 0, severe: 0 };
     assets.forEach((a) => c[statusOf(a)]++);
@@ -1075,13 +1685,33 @@ function Legend({ assets, eaFloods, showEa, setShowEa }) {
     return c;
   }, [eaFloods]);
 
+  if (collapsed) {
+    return (
+      <button onClick={() => setCollapsed(false)} title="Expand legend" aria-label="Expand legend"
+        style={{ background: T.surface1, border: `1px solid ${T.borderPrimary}`, borderRadius: T.r4,
+          boxShadow: T.shadow, padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+          width: 208, boxSizing: "border-box", opacity: dimmed ? 0.35 : 1, transition: "opacity .15s ease" }}>
+        <span style={{ fontSize: 10, fontWeight: 600, color: T.n1000, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Legend
+        </span>
+        <span style={{ fontSize: 10, color: T.n1000 }}><FigIcon name="colOrder" size={12} /></span>
+      </button>
+    );
+  }
+
   return (
     <div style={{ background: T.surface1,
-      border: `1px solid ${T.borderPrimary}`, borderRadius: T.r4, boxShadow: T.shadow, width: 208 }}>
-      <div style={{ padding: "7px 10px", borderBottom: `1px solid ${T.borderPrimary}` }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: T.n1000, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+      border: `1px solid ${T.borderPrimary}`, borderRadius: T.r4, boxShadow: T.shadow, width: 208,
+      opacity: dimmed ? 0.35 : 1, transition: "opacity .15s ease" }}>
+      <div className="flex items-center justify-between" style={{ padding: "7px 10px", borderBottom: `1px solid ${T.borderPrimary}` }}>
+        <div className="flex items-center" style={{ gap: 6, fontSize: 10, fontWeight: 600, color: T.n1000, textTransform: "uppercase", letterSpacing: "0.06em" }}>
           Scheme telemetry
         </div>
+        <button onClick={() => setCollapsed(true)} title="Collapse legend" aria-label="Collapse legend"
+          className="flex items-center"
+          style={{ color: T.n1000, cursor: "pointer", padding: 0, background: "none", border: "none" }}>
+          <FigIcon name="collapse" size={12} />
+        </button>
       </div>
 
       <div style={{ padding: "6px 10px" }}>
@@ -1114,28 +1744,6 @@ function Legend({ assets, eaFloods, showEa, setShowEa }) {
             </span>
           </div>
         ))}
-        {eaFloods?.source === "demo" && (
-          <div style={{ fontSize: 9, color: T.orange1200, background: T.orange100, borderRadius: T.r2,
-            padding: "3px 5px", marginTop: 5, lineHeight: 1.35 }}>
-            Demo severities on real EA areas — no warnings in force nationally.
-          </div>
-        )}
-        {eaFloods?.source === "live" && (
-          <div style={{ fontSize: 9, color: T.n1000, marginTop: 5 }}>
-            Live from Environment Agency · {eaFloods.nationalCount} in force nationally
-          </div>
-        )}
-      </div>
-
-      <div style={{ borderTop: `1px solid ${T.borderPrimary}`, padding: "6px 10px" }}>
-        <div className="flex items-center" style={{ gap: 8, padding: "1px 0" }}>
-          <svg width="15" height="14"><circle cx="7.5" cy="7" r="6" fill="none" stroke={T.scenario} strokeWidth="1.6" strokeDasharray="3 2" /></svg>
-          <span style={{ fontSize: 11, color: T.n1100 }}>Projected change</span>
-        </div>
-        <div className="flex items-center" style={{ gap: 8, padding: "1px 0" }}>
-          <svg width="15" height="14"><rect x="1" y="2" width="13" height="10" rx="3" fill="none" stroke={T.orangeP1} strokeWidth="1.6" strokeDasharray="4 3" /></svg>
-          <span style={{ fontSize: 11, color: T.n1100 }}>Scheme boundary</span>
-        </div>
       </div>
     </div>
   );
@@ -1217,6 +1825,12 @@ function EAWarningsBody({ warnings, selectedCode, onSelectWarning }) {
                 {w.label}
               </span>
               <span className="fiq-mono" style={{ fontSize: 10, color: T.n1000 }}>{w.raised}</span>
+              <button onClick={(e) => { e.stopPropagation(); onSelectWarning?.(w.id); }}
+                title={`Zoom to ${w.area}`} aria-label={`Zoom to ${w.area}`}
+                style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "none", border: "none", padding: 2, cursor: "pointer", color: T.n1000 }}>
+                <FigIcon name="zoomToMap" size={12} />
+              </button>
             </div>
             <div style={{ fontSize: 12, fontWeight: 600, color: T.n1, marginBottom: 2 }}>{w.area}</div>
             <div style={{ fontSize: 11, color: T.n1000, marginBottom: 4 }}>{w.river}</div>
@@ -1232,7 +1846,7 @@ function NetworkDock({
   assets, mode, params, selectedId, onSelect, filter, setFilter,
   open, setOpen, height, setHeight, tab, setTab,
   incidents, setIncidents, selectedIncId, setSelectedIncId, onDraftAlert,
-  eaSelected, setEaSelected,
+  eaSelected, setEaSelected, histories, onZoomTo, forecast, simProgress,
 }) {
   const dragRef = useRef(null);
   const startY = useRef(0);
@@ -1240,6 +1854,7 @@ function NetworkDock({
   const [searchNetwork, setSearchNetwork] = useState("");
   const [searchIncidents, setSearchIncidents] = useState("");
   const [searchEa, setSearchEa] = useState("");
+  const [expandedAssetId, setExpandedAssetId] = useState(null);
 
   const onPointerDown = useCallback((e) => {
     e.preventDefault();
@@ -1287,6 +1902,49 @@ function NetworkDock({
     return matchesSearch;
   });
 
+  const alertRanked = useMemo(
+    () => assets
+      .filter((a) => statusOf(a) !== "normal")
+      .sort((x, y) => LEVEL_ORDER.indexOf(statusOf(y)) - LEVEL_ORDER.indexOf(statusOf(x))),
+    [assets]
+  );
+
+  const badgeBarRef = useRef(null);
+  const [visibleCount, setVisibleCount] = useState(alertRanked.length);
+  const badgeWidthsRef = useRef([]);
+
+  const measureBadges = useCallback(() => {
+    const bar = badgeBarRef.current;
+    if (!bar) return;
+    const barWidth = bar.clientWidth;
+    const chips = bar.querySelectorAll("[data-badge]");
+    if (chips.length === 0) { setVisibleCount(alertRanked.length); return; }
+    const widths = Array.from(chips).map((el) => el.offsetWidth + 4); // 4px gap
+    badgeWidthsRef.current = widths;
+    let count = 0;
+    let total = 0;
+    const overflowSpace = 36; // space for "+N" badge
+    for (let i = 0; i < widths.length; i++) {
+      total += widths[i];
+      if (i < widths.length - 1 && total + overflowSpace > barWidth) break;
+      if (total > barWidth) break;
+      count = i + 1;
+    }
+    setVisibleCount(Math.max(1, count));
+  }, [alertRanked.length]);
+
+  useEffect(() => {
+    measureBadges();
+    const bar = badgeBarRef.current;
+    if (!bar) return;
+    const ro = new ResizeObserver(measureBadges);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [measureBadges, open]);
+
+  const alertShown = alertRanked.slice(0, visibleCount);
+  const alertOverflow = alertRanked.length - alertShown.length;
+
   const tabBtn = (k, label, count) => (
     <button key={k} onClick={() => { setTab(k); setOpen(true); }}
       style={{
@@ -1324,6 +1982,34 @@ function NetworkDock({
         {tabBtn("incidents", "Incidents", openIncidents.length)}
         {tabBtn("ea", "EA Warnings", filteredEa.length)}
 
+        {!open && (
+          <div ref={badgeBarRef} className="flex items-center" style={{ gap: 4, marginLeft: 12, flex: 1, minWidth: 0, overflow: "hidden" }}>
+            {/* Hidden measurement badges */}
+            <div aria-hidden="true" style={{ position: "absolute", visibility: "hidden", pointerEvents: "none", height: 0, overflow: "hidden" }}>
+              {alertRanked.map((a) => (
+                <span key={a.id} data-badge style={{ display: "inline-flex", whiteSpace: "nowrap" }}>
+                  <AlertChip status={statusOf(a)}>{badgeCopy(a)}</AlertChip>
+                </span>
+              ))}
+            </div>
+            {alertRanked.length === 0 && <AlertChip status="normal">All stations normal</AlertChip>}
+            {alertShown.map((a) => (
+              <AlertChip key={a.id} status={statusOf(a)} onClick={() => onSelect(a.id)}>
+                {badgeCopy(a)}
+              </AlertChip>
+            ))}
+            {alertOverflow > 0 && (
+              <button onClick={() => onSelect(alertRanked[visibleCount].id)}
+                className="shrink-0"
+                style={{ fontSize: 11, fontWeight: 600, color: T.blue800, padding: "0 6px", height: 20,
+                  borderRadius: T.r16, background: T.blue100, border: `1px solid ${T.blue800}`, cursor: "pointer",
+                  whiteSpace: "nowrap" }}>
+                +{alertOverflow}
+              </button>
+            )}
+          </div>
+        )}
+
         {open && tab === "network" && (
           <div className="flex items-center" style={{ gap: 8, marginLeft: 12 }}>
             {searchInput(searchNetwork, setSearchNetwork, "Search stations...")}
@@ -1354,8 +2040,10 @@ function NetworkDock({
 
         <div className="flex-1" />
         <button onClick={() => setOpen(!open)} aria-expanded={open}
-          style={{ fontSize: 11, fontWeight: 600, color: T.n1100, padding: "0 12px", height: 36, cursor: "pointer" }}>
-          {open ? "Collapse ▾" : "Expand ▴"}
+          style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600,
+            color: T.n1100, padding: "0 12px", height: 36, cursor: "pointer", background: "none", border: "none" }}>
+          {open ? <FigIcon name="keyDown" size={12} /> : <FigIcon name="keyUp" size={12} />}
+          {open ? "Collapse" : "Expand"}
         </button>
       </header>
 
@@ -1363,7 +2051,7 @@ function NetworkDock({
         <div className="flex-1 min-h-0 overflow-y-auto fiq-scroll">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ position: "sticky", top: 0, background: T.surface1, zIndex: 1 }}>
+                <tr style={{ position: "sticky", top: 0, background: T.surface1, zIndex: 1 }}>
                 {["Station", "Ref", "Group", "Status", "Reading", "Alert", "Warning", "Severe", "Trend"].map((h, i) => (
                   <th key={h} style={{ textAlign: i > 3 ? "right" : "left", fontSize: 10, fontWeight: 600, color: T.n1000,
                     textTransform: "uppercase", letterSpacing: "0.06em", padding: "6px 10px",
@@ -1377,27 +2065,16 @@ function NetworkDock({
                 const proj = mode === "scenario" ? project(a, params) : null;
                 const projSt = proj !== null ? levelFor(a, proj) : null;
                 const sel = a.id === selectedId;
+                const below = GROUP_META[a.group].ground === "below";
                 const cell = { padding: "5px 10px", fontSize: 12, color: T.n1, borderBottom: `1px solid ${T.borderPrimary}`, whiteSpace: "nowrap" };
                 const num = { ...cell, textAlign: "right", fontFamily: "'IBM Plex Mono', ui-monospace, monospace" };
+                const expanded = expandedAssetId === a.id;
                 return (
-                  <tr key={a.id} onClick={() => onSelect(a.id)} style={{ background: sel ? "#EEF4FE" : "transparent", cursor: "pointer" }}>
-                    <td style={{ ...cell, fontWeight: 500, borderLeft: `3px solid ${LEVELS[st].fill}` }}>{a.name}</td>
-                    <td style={{ ...cell, fontFamily: "'IBM Plex Mono', ui-monospace, monospace", fontSize: 11, color: T.n1000 }}>{a.ref}</td>
-                    <td style={{ ...cell, fontSize: 11, color: T.n1100 }}>{GROUP_META[a.group].label}</td>
-                    <td style={cell}><AlertChip status={st}>{LEVELS[st].label}</AlertChip></td>
-                    <td className={(st === "alert" || st === "warning" || st === "severe") ? "fiq-text-pulse" : ""} style={{ ...num, fontWeight: 600, color: LEVELS[st].fill }}>
-                      {fmt(a.level, a.unit)} <span style={{ fontSize: 10, color: T.n1000, fontWeight: 400 }}>{a.unit}</span>
-                      {proj !== null && (
-                        <span style={{ color: LEVELS[projSt].fill, fontWeight: 600 }}> → {fmt(proj, a.unit)}</span>
-                      )}
-                    </td>
-                    <td style={{ ...num, color: T.n1100 }}>{fmt(a.alert, a.unit)}</td>
-                    <td style={{ ...num, color: T.n1100 }}>{fmt(a.warning, a.unit)}</td>
-                    <td style={{ ...num, color: T.n1100 }}>{fmt(a.severe, a.unit)}</td>
-                    <td style={{ ...cell, width: 60, padding: "2px 10px" }}>
-                      <StageBoard asset={a} height={26} width={16} projected={proj} />
-                    </td>
-                  </tr>
+                  <AssetRow key={a.id} asset={a} st={st} proj={proj} projSt={projSt} sel={sel} below={below}
+                    cell={cell} num={num} expanded={expanded} mode={mode}
+                    history={histories[a.id] || []} forecast={forecast} simProgress={simProgress}
+                    onToggleExpand={() => setExpandedAssetId(expanded ? null : a.id)}
+                    onSelect={() => onSelect(a.id)} onZoomTo={() => onZoomTo?.(a.id)} />
                 );
               })}
             </tbody>
@@ -1408,7 +2085,8 @@ function NetworkDock({
       {open && tab === "incidents" && (
         <div className="flex-1 min-h-0 overflow-y-auto fiq-scroll">
           <IncidentsBody incidents={openIncidents} setIncidents={setIncidents}
-            selectedIncId={selectedIncId} setSelectedIncId={setSelectedIncId} onDraftAlert={onDraftAlert} />
+            selectedIncId={selectedIncId} setSelectedIncId={setSelectedIncId} onDraftAlert={onDraftAlert}
+            onSelect={onSelect} onZoomTo={onZoomTo} />
         </div>
       )}
 
@@ -1421,7 +2099,111 @@ function NetworkDock({
   );
 }
 
-function DetailPanel({ asset, history, mode, params, onRaise, onClose }) {
+/* AssetRow — a single table row in the Network dock that can expand
+   into a full detail card with spark line, thresholds, and notes. */
+function AssetRow({ asset, st, proj, projSt, sel, below, cell, num, expanded, mode,
+                    history, forecast, simProgress, onToggleExpand, onSelect, onZoomTo }) {
+  const a = asset;
+  return (
+    <>
+      <tr style={{ background: sel ? "#EEF4FE" : expanded ? T.n400 : "transparent", cursor: "pointer" }}
+        onClick={onToggleExpand}>
+        <td style={{ ...cell, fontWeight: 500, borderLeft: `3px solid ${LEVELS[st].fill}`, paddingRight: 0 }}>
+          <span className="flex items-center" style={{ gap: 4 }}>
+            <button onClick={(e) => { e.stopPropagation(); onZoomTo(); }}
+              title={`Zoom to ${a.name}`} aria-label={`Zoom to ${a.name}`}
+              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
+                background: "none", border: "none", padding: 0, cursor: "pointer", color: T.n1000, flexShrink: 0 }}>
+              <FigIcon name="zoomToMap" size={12} />
+            </button>
+            <FigIcon name={expanded ? "keyDown" : "keyUp"} size={10} />
+            {a.name}
+          </span>
+        </td>
+        <td style={{ ...cell, fontFamily: "'IBM Plex Mono', ui-monospace, monospace", fontSize: 11, color: T.n1000 }}>{a.ref}</td>
+        <td style={{ ...cell, fontSize: 11, color: T.n1100 }}>{GROUP_META[a.group].label}</td>
+        <td style={cell}><AlertChip status={st}>{LEVELS[st].label}</AlertChip></td>
+        <td className={(st === "alert" || st === "warning" || st === "severe") ? "fiq-text-pulse" : ""} style={{ ...num, fontWeight: 600, color: LEVELS[st].fill }}>
+          {fmt(a.level, a.unit)} <span style={{ fontSize: 10, color: T.n1000, fontWeight: 400 }}>{a.unit}</span>
+        </td>
+        <td style={{ ...num, color: T.n1100 }}>{fmt(a.alert, a.unit)}</td>
+        <td style={{ ...num, color: T.n1100 }}>{fmt(a.warning, a.unit)}</td>
+        <td style={{ ...num, color: T.n1100 }}>{fmt(a.severe, a.unit)}</td>
+        <td style={{ ...cell, width: 90, padding: "2px 4px" }}>
+          <Spark data={history} color={below ? T.ground : T.waterDeep} height={22}
+            ground={a.min} maxStage={a.max} overspill={a.severe + (a.max - a.severe) * 0.35}
+            forecast={forecast?.[a.id]} simProgress={simProgress} />
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={9} style={{ padding: 0, borderBottom: `2px solid ${T.blue800}` }}>
+            <div style={{ padding: "10px 14px", background: T.n400 }}>
+              <div className="flex" style={{ gap: 14 }}>
+                {/* Left: spark + thresholds */}
+                <div style={{ flex: "0 0 160px" }}>
+                  <div style={{ fontSize: 10, color: below ? T.ground : T.blue800, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    {GROUP_META[a.group].label} · {GROUP_META[a.group].ground} ground
+                  </div>
+                  <div className={`fiq-mono ${(st === "alert" || st === "warning" || st === "severe") ? "fiq-text-pulse" : ""}`}
+                    style={{ fontSize: 20, fontWeight: 600, color: LEVELS[st].fill, marginTop: 2 }}>
+                    {fmt(a.level, a.unit)}
+                    <span style={{ fontSize: 10, color: T.n1000, fontWeight: 400 }}> {a.unit}</span>
+                  </div>
+                  <Spark data={history} color={below ? T.ground : T.waterDeep} height={48}
+                    ground={a.min} maxStage={a.max} overspill={a.severe + (a.max - a.severe) * 0.35}
+                    forecast={forecast?.[a.id]} simProgress={simProgress} />
+                  <table style={{ width: "100%", fontSize: 11, marginTop: 6 }}>
+                    <tbody>
+                      {["alert", "warning", "severe"].map((k) => (
+                        <tr key={k}>
+                          <td style={{ padding: "1px 0", color: T.n1100 }}>
+                            <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: LEVELS[k].fill, marginRight: 5 }} />
+                            {LEVELS[k].label.replace("Flood ", "")}
+                          </td>
+                          <td className="fiq-mono" style={{ textAlign: "right", color: T.n1 }}>{fmt(a[k], a.unit)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Right: details + notes */}
+                <div className="flex-1 min-w-0">
+                  <div className="fiq-mono" style={{ fontSize: 10, color: T.n1000, marginBottom: 4 }}>{a.ref}</div>
+                  <p style={{ fontSize: 11, color: T.n1100, lineHeight: 1.45, marginBottom: 8 }}>{a.note}</p>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: T.n1000, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+                    Recent readings
+                  </div>
+                  <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                    {history.slice(-12).map((v, i) => (
+                      <span key={i} className="fiq-mono" style={{
+                        fontSize: 9, padding: "1px 4px", borderRadius: T.r2,
+                        background: v >= a.severe ? T.red100 : v >= a.warning ? T.orange100 : v >= a.alert ? "#FFF3E0" : T.white,
+                        color: v >= a.severe ? T.red800 : v >= a.warning ? T.orange600 : v >= a.alert ? T.orange500 : T.n1100,
+                        border: `1px solid ${v >= a.severe ? T.red800 : v >= a.warning ? T.orange600 : v >= a.alert ? T.orange500 : T.borderPrimary}` }}>
+                        {fmt(v, a.unit)}
+                      </span>
+                    ))}
+                  </div>
+                  {(st === "warning" || st === "severe") && (
+                    <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+                      <button style={{ padding: "5px 10px", borderRadius: T.r2, background: T.n1, color: T.white,
+                        fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer" }}>Raise incident</button>
+                      <button style={{ padding: "5px 10px", borderRadius: T.r2, background: T.white, color: T.n1,
+                        fontSize: 11, fontWeight: 500, border: `1px solid ${T.borderPrimary}`, cursor: "pointer" }}>Assign maintenance</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function DetailPanel({ asset, history, mode, params, onRaise, onClose, forecast, simProgress }) {
   if (!asset) return null;
   const st = statusOf(asset);
   const proj = mode === "scenario" ? project(asset, params) : null;
@@ -1451,7 +2233,8 @@ function DetailPanel({ asset, history, mode, params, onRaise, onClose }) {
                 projected {fmt(proj, asset.unit)} {asset.unit}
               </div>
             )}
-            <Spark data={history} color={below ? T.ground : T.waterDeep} height={44} />
+            <Spark data={history} color={below ? T.ground : T.waterDeep} height={44}
+              forecast={forecast?.[asset.id]} simProgress={simProgress} />
             <table style={{ width: "100%", fontSize: 11 }}>
               <tbody>
                 {rows.map((k) => (
@@ -1471,11 +2254,28 @@ function DetailPanel({ asset, history, mode, params, onRaise, onClose }) {
         <p style={{ fontSize: 11, color: T.n1100, marginTop: 8, lineHeight: 1.45 }}>{asset.note}</p>
 
         {(st === "warning" || st === "severe") && (
-          <button onClick={() => onRaise(asset)}
-            style={{ marginTop: 10, width: "100%", padding: "7px 10px", borderRadius: T.r2, background: T.n1,
-              color: T.white, fontSize: 12, fontWeight: 600 }}>
-            Raise incident
-          </button>
+          <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button onClick={() => onRaise(asset)}
+              style={{ flex: "1 1 0", minWidth: 100, padding: "7px 10px", borderRadius: T.r2, background: T.n1,
+                color: T.white, fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer" }}>
+              Raise incident
+            </button>
+            <button onClick={() => {}}
+              style={{ flex: "1 1 0", minWidth: 100, padding: "7px 10px", borderRadius: T.r2, background: T.white,
+                color: T.n1, fontSize: 11, fontWeight: 500, border: `1px solid ${T.borderPrimary}`, cursor: "pointer" }}>
+              Assign maintenance
+            </button>
+            <button onClick={() => {}}
+              style={{ flex: "1 1 0", minWidth: 100, padding: "7px 10px", borderRadius: T.r2, background: T.white,
+                color: T.n1, fontSize: 11, fontWeight: 500, border: `1px solid ${T.borderPrimary}`, cursor: "pointer" }}>
+              Share alert
+            </button>
+            <button onClick={() => {}}
+              style={{ flex: "1 1 0", minWidth: 100, padding: "7px 10px", borderRadius: T.r2, background: T.red800,
+                color: T.white, fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer" }}>
+              Escalate
+            </button>
+          </div>
         )}
       </div>
     </Panel>
@@ -1572,7 +2372,7 @@ function IncidentsPanel({ incidents, setIncidents, selectedIncId, setSelectedInc
   );
 }
 
-function IncidentsBody({ incidents, setIncidents, selectedIncId, setSelectedIncId, onDraftAlert }) {
+function IncidentsBody({ incidents, setIncidents, selectedIncId, setSelectedIncId, onDraftAlert, onSelect, onZoomTo }) {
   const open = incidents.filter((i) => i.status !== "closed");
   const inc = incidents.find((i) => i.id === selectedIncId) || open[0];
 
@@ -1620,6 +2420,14 @@ function IncidentsBody({ incidents, setIncidents, selectedIncId, setSelectedIncI
                   </div>
                 </div>
                 <AlertChip status={inc.severity}>{LEVELS[inc.severity].label}</AlertChip>
+                {onZoomTo && inc.assetIds && inc.assetIds.length > 0 && (
+                  <button onClick={() => onZoomTo(inc.assetIds[0])}
+                    title="Zoom to asset" aria-label="Zoom to asset"
+                    style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                      background: "none", border: "none", padding: 2, cursor: "pointer", color: T.n1000 }}>
+                    <FigIcon name="zoomToMap" size={12} />
+                  </button>
+                )}
               </div>
 
               <div className="flex" style={{ gap: 5, marginTop: 9, flexWrap: "wrap" }}>
@@ -1737,31 +2545,34 @@ function CommsDrawer({
     }
   };
 
-  const simplify = async () => {
+  const simplify = () => {
     setBusy(true);
-    try {
-      const ctx = worst.slice(0, 5).map((a) => `${a.name} (${a.ref}): ${fmt(a.level, a.unit)}${a.unit}, ${LEVELS[statusOf(a)].label}`).join("; ");
+    setTimeout(() => {
       const aud = AUDIENCES.find((a) => a.id === audience);
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{
-            role: "user",
-            content: `You write flood alerts for a UK flood authority operating a reservoir scheme south-south-west of Heathrow Airport. Telemetry: ${ctx}. Audience: ${aud.label} — ${aud.detail}. Draft: "${message}". Rewrite as a single SMS for that audience. For the public, use plain English at reading age 9, calm but urgent, concrete actions, no jargon, and include Floodline 0345 988 1188. For airport operations or emergency services, keep operational precision and name the specific assets. Under 300 characters. Respond with ONLY the SMS text.`,
-          }],
-        }),
-      });
-      const data = await res.json();
-      const text = data.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-      if (text) setMessage(text);
-    } catch (e) {
-      console.error("rewrite failed", e);
-    } finally {
+      const w = worst[0];
+      const st = statusOf(w);
+      const level = fmt(w.level, w.unit);
+      const unit = w.unit;
+      const area = w.group === "res" ? "reservoir" : w.group === "river" ? "river" : "watercourse";
+      const locations = ["Staines", "Wraysbury", "Colnbrook", "Stanwell"];
+      const locStr = locations.join(", ");
+
+      let rewritten;
+      if (audience === "public") {
+        const urgency = st === "severe" ? "Danger to life." : st === "warning" ? "Flooding is expected." : "Flooding is possible.";
+        const action = st === "severe"
+          ? "Leave the area now if it is safe to do so. Call 999 if you are in danger."
+          : "Move cars and valuables upstairs or to higher ground. Avoid flood water.";
+        rewritten = `FLOOD ${st === "severe" ? "DANGER" : "WARNING"} — ${locStr}. ${urgency} Water levels at ${w.name} are ${level}${unit}. ${action} For help call Floodline 0345 988 1188.`;
+      } else if (audience === "ops") {
+        rewritten = `HAL OPS — ${LEVELS[st].label.toUpperCase()}: ${w.name} ${level}${unit}. ${st === "severe" ? "Expect apron flooding and possible stand closures. Airside duty to brief ground handling. Drainage team to eastern balancing pond." : "Monitor apron drainage. Brief ground handling if levels rise further."}`;
+      } else {
+        rewritten = `MULTI-AGENCY — ${LEVELS[st].label.toUpperCase()}, Staines ${area} scheme. ${w.name} ${level}${unit}. ${st === "severe" ? "Reservoir undertaker on site. Requesting standby at Hythe End and Colnbrook. Off-site plan ref held by Surrey FRS." : "Scheme monitoring. Standing by for escalation. Update channel: ops-bridge."}`;
+      }
+
+      setMessage(rewritten);
       setBusy(false);
-    }
+    }, 600);
   };
 
   const smsHref = `sms:${phone.replace(/\s+/g, "")}?&body=${encodeURIComponent(message)}`;
@@ -1791,7 +2602,7 @@ function CommsDrawer({
         </header>
 
         <div className="flex shrink-0" style={{ background: T.n400, borderBottom: `1px solid ${T.n600}` }}>
-          {tabBtn("feed", "Feed")}
+          {tabBtn("feed", "Comms Feed")}
           {tabBtn("notify", "Notify")}
         </div>
 
@@ -1849,16 +2660,48 @@ function CommsDrawer({
             </div>
           </div>
 
-          {/* preview */}
+          {/* preview — iOS-style phone */}
           <div style={{ background: T.n1, borderRadius: T.r4, padding: 16, display: "flex", justifyContent: "center" }}>
             <div style={{ width: "100%", maxWidth: 268 }}>
               <div className="fiq-mono" style={{ fontSize: 10, color: T.n1000, textAlign: "center", marginBottom: 8 }}>
                 PREVIEW — RECIPIENT'S PHONE
               </div>
-              <div style={{ background: "#454545", borderRadius: 16, padding: 10 }}>
-                <div className="fiq-mono" style={{ fontSize: 10, color: T.n3, marginBottom: 5 }}>FLOODALERT · now</div>
-                <div style={{ background: "#EDEDED", borderRadius: 12, padding: 9, fontSize: 12, color: T.n1, lineHeight: 1.5, minHeight: 40 }}>
-                  {message || "Your alert text will appear here."}
+              {/* phone frame */}
+              <div style={{ background: "#000", borderRadius: 24, padding: "12px 10px", boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
+                {/* status bar */}
+                <div className="flex items-center justify-between" style={{ padding: "0 8px 6px", fontSize: 11, fontWeight: 600, color: T.white }}>
+                  <span>9:41</span>
+                  <div className="flex items-center" style={{ gap: 4 }}>
+                    <svg width="14" height="10" viewBox="0 0 14 10"><rect x="0" y="5" width="2.5" height="5" rx="0.5" fill="white"/><rect x="3.5" y="3" width="2.5" height="7" rx="0.5" fill="white"/><rect x="7" y="1" width="2.5" height="9" rx="0.5" fill="white"/><rect x="10.5" y="0" width="2.5" height="10" rx="0.5" fill="white"/></svg>
+                    <svg width="12" height="10" viewBox="0 0 12 10"><path d="M1 3.5C3.5 0.5 8.5 0.5 11 3.5" stroke="white" strokeWidth="1.2" fill="none"/><path d="M3 5.5C4.5 3.5 7.5 3.5 9 5.5" stroke="white" strokeWidth="1.2" fill="none"/><circle cx="6" cy="7.5" r="1.2" fill="white"/></svg>
+                    <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="18" height="8" rx="2" stroke="white" strokeWidth="1" fill="none"/><rect x="1.5" y="2.5" width="13" height="5" rx="1" fill="#4CD964"/><rect x="19" y="3" width="2" height="4" rx="1" fill="white" opacity="0.5"/></svg>
+                  </div>
+                </div>
+                {/* nav bar */}
+                <div className="flex items-center" style={{ padding: "2px 8px 8px", gap: 6 }}>
+                  <svg width="8" height="14" viewBox="0 0 8 14"><path d="M7 1L1 7l6 6" stroke="#007AFF" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span style={{ fontSize: 10, color: "#007AFF" }}>Messages</span>
+                </div>
+                {/* conversation */}
+                <div style={{ background: T.white, borderRadius: 14, padding: "10px 8px" }}>
+                  <div style={{ fontSize: 10, color: T.n1000, textAlign: "center", marginBottom: 6 }}>FLOOD ALERT</div>
+                  {/* message bubble */}
+                  <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                    <div style={{ position: "relative", maxWidth: "85%" }}>
+                      <div style={{ background: "#E9E9EB", borderRadius: "16px 16px 16px 4px", padding: "8px 12px", fontSize: 13, color: T.n1, lineHeight: 1.45 }}>
+                        {message || "Your alert text will appear here."}
+                      </div>
+                      {/* bubble tail */}
+                      <div style={{ position: "absolute", bottom: 0, left: -5, width: 10, height: 10, overflow: "hidden" }}>
+                        <div style={{ width: 16, height: 16, background: "#E9E9EB", borderRadius: "50%", position: "absolute", bottom: 2, left: 0 }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, color: T.n3, marginTop: 4, paddingLeft: 4 }}>Delivered</div>
+                </div>
+                {/* home indicator */}
+                <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 2px" }}>
+                  <div style={{ width: 120, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.3)" }} />
                 </div>
               </div>
             </div>
@@ -1896,14 +2739,92 @@ function CommsDrawer({
 /* ==================================================================
    App
    ================================================================== */
+
+/* Generate a 72-step forecast for every asset from current state + params.
+   Each step represents ~20 real minutes (72 steps ≈ 24 hours of wall-clock sim). */
+function generateForecast(currentAssets, p) {
+  const fc = {};
+  let snapshot = currentAssets.map((a) => ({ ...a }));
+  for (let step = 0; step < 72; step++) {
+    const snap = {};
+    snapshot.forEach((a) => { snap[a.id] = a.level; });
+    Object.keys(snap).forEach((id) => { if (!fc[id]) fc[id] = []; fc[id].push(snap[id]); });
+    snapshot = snapshot.map((a) => {
+      const range = a.max - a.min;
+      const intensity = p.rain / Math.max(p.duration, 1);
+      const inflow = p.rain * (0.35 + p.catchmentWet / 200);
+      const drawdownM = (p.drawdown / 100) * 1.9;
+      let newLevel = a.level;
+      switch (a.id) {
+        case "res-01": {
+          const startAdj = (p.startFull - 82) * 0.035;
+          newLevel = a.level + (startAdj + inflow * 0.021 - drawdownM) * 0.014;
+          break;
+        }
+        case "res-fb": {
+          const resLev = snapshot.find((x) => x.id === "res-01")?.level || a.level;
+          newLevel = clamp(32.6 - resLev, a.min, a.max);
+          break;
+        }
+        case "spw-01": {
+          const rl = snapshot.find((x) => x.id === "res-01")?.level || a.level;
+          const over = Math.max(0, rl - 31.9);
+          newLevel = clamp(Math.pow(over, 1.5) * 78, a.min, a.max);
+          break;
+        }
+        case "dot-01":
+          newLevel = clamp(15 + p.drawdown * 0.82, a.min, a.max);
+          break;
+        case "pz-04": {
+          const rl2 = snapshot.find((x) => x.id === "res-01")?.level || a.level;
+          const head = (rl2 - 29.5) * 21;
+          const rapid = p.drawdown > 45 ? p.drawdown * 0.22 : 0;
+          newLevel = clamp(38 + head + rapid, a.min, a.max);
+          break;
+        }
+        case "seep-1": {
+          const pz = snapshot.find((x) => x.id === "pz-04")?.level || a.level;
+          newLevel = clamp(0.6 + Math.max(0, pz - 40) * 0.135, a.min, a.max);
+          break;
+        }
+        case "riv-col": {
+          const spw = snapshot.find((x) => x.id === "spw-01")?.level || 0;
+          const release = p.drawdown * 0.0125;
+          newLevel = a.level + (intensity * 0.14 * (0.5 + p.catchmentWet / 100) + spw * 0.031 + release) * 0.01;
+          break;
+        }
+        case "riv-lon":
+          newLevel = a.level + intensity * 0.085 * (0.5 + p.catchmentWet / 100) * 0.01;
+          break;
+        case "drn-e":
+        case "drn-n":
+          newLevel = a.level + (intensity * 2.6 * a.resp * (0.6 + p.catchmentWet / 160) - (p.pondPreRelease ? 14 : 0)) * 0.012;
+          break;
+        case "gw-st":
+          newLevel = a.level + p.rain * 0.0165 * (p.catchmentWet / 100) * 0.008;
+          break;
+        case "met-01":
+          newLevel = clamp(intensity, a.min, a.max);
+          break;
+        default:
+          newLevel = a.level;
+      }
+      return { ...a, level: clamp(newLevel, a.min, a.max) };
+    });
+  }
+  return fc;
+}
+
 export default function FloodIqHeathrow() {
   const [assets, setAssets] = useState(seedAssets);
   const [histories, setHistories] = useState(() =>
-    Object.fromEntries(seedAssets.map((a) => [a.id, Array.from({ length: 26 }, () => a.level + (Math.random() - 0.5) * 0.05 * (a.max - a.min))]))
+    Object.fromEntries(seedAssets.map((a) => [a.id, Array.from({ length: 72 }, () => a.level + (Math.random() - 0.5) * 0.05 * (a.max - a.min))]))
   );
   const [storm, setStorm] = useState(false);
   const [mode, setMode] = useState("live");
   const [params, setParams] = useState({ rain: 70, duration: 14, catchmentWet: 72, startFull: 88, drawdown: 20, pondPreRelease: false });
+  const [forecast, setForecast] = useState(null);
+  const [simProgress, setSimProgress] = useState(0);
   const [selectedId, setSelectedId] = useState("res-01");
   const [incidents, setIncidents] = useState([]);
   const [selectedIncId, setSelectedIncId] = useState(null);
@@ -1918,6 +2839,11 @@ export default function FloodIqHeathrow() {
   const [eaFloods, setEaFloods] = useState(null);
   const [eaSelected, setEaSelected] = useState(null);
   const [showEa, setShowEa] = useState(true);
+  const [panToId, setPanToId] = useState(null);
+  const [activeTool, setActiveTool] = useState("cursorSelect");
+  const [subTool, setSubTool] = useState(null);
+  const [cursorPos, setCursorPos] = useState({ lat: 51.4700, lng: -0.4543 });
+  const [page, setPage] = useState(null);
   const [message, setMessage] = useState("");
   const [audience, setAudience] = useState("public");
   const [published, setPublished] = useState(stampFull());
@@ -1967,10 +2893,33 @@ export default function FloodIqHeathrow() {
   useEffect(() => {
     setHistories((h) => {
       const n = { ...h };
-      assets.forEach((a) => { n[a.id] = [...(n[a.id] || []).slice(-41), a.level]; });
+      assets.forEach((a) => { n[a.id] = [...(n[a.id] || []).slice(-71), a.level]; });
       return n;
     });
   }, [assets]);
+
+  /* Storm simulation: generate forecast on start, clear on stop */
+  useEffect(() => {
+    if (storm && !forecast) {
+      setForecast(generateForecast(assets, params));
+      setSimProgress(0);
+    } else if (!storm) {
+      setForecast(null);
+      setSimProgress(0);
+    }
+  }, [storm]);
+
+  /* Storm simulation: auto-advance simProgress every 1.5s while storm is on */
+  useEffect(() => {
+    if (!storm || !forecast) return;
+    const id = setInterval(() => {
+      setSimProgress((p) => {
+        if (p >= 72) { setStorm(false); return 72; }
+        return p + 1;
+      });
+    }, 1500);
+    return () => clearInterval(id);
+  }, [storm, forecast]);
 
   /* The rail's panel buttons now drive the dock and the comms drawer. */
   const togglePanel = (k) => {
@@ -2021,30 +2970,44 @@ export default function FloodIqHeathrow() {
 
       <SideNav mode={mode} setMode={setMode} panels={{ ...panels, network: dockOpen && dockTab === "network",
         incidents: dockOpen && dockTab === "incidents", comms: commsOpen }}
-        togglePanel={togglePanel} expanded={navExpanded} setExpanded={setNavExpanded} />
+        togglePanel={togglePanel} expanded={navExpanded} setExpanded={setNavExpanded}
+        page={page} setPage={setPage} />
 
       <div className="flex flex-col flex-1 min-w-0">
-        <TopNav assets={assets} published={published} onChipClick={jumpToStation} mode={mode}
-          commsOpen={commsOpen} setCommsOpen={setCommsOpen} unreadFeeds={seedFeeds.length} />
+        <TopNav published={published} mode={mode} setMode={setMode}
+          commsOpen={commsOpen} setCommsOpen={setCommsOpen} unreadFeeds={seedFeeds.length}
+          storm={storm} setStorm={setStorm} />
 
         <div className="relative flex-1 min-h-0" style={{ overflow: "hidden" }}>
+          {page ? (
+            <div className="flex flex-col items-center justify-center h-full" style={{ background: T.n400, gap: 12 }}>
+              <FigIcon name={page === "emergency" ? "mode3" : page === "comms_page" ? "mode4" : "mode5"} size={32} />
+              <span style={{ fontSize: 16, fontWeight: 600, color: T.n1 }}>
+                {page === "emergency" ? "Emergency management" : page === "comms_page" ? "Communications" : "Dashboards"}
+              </span>
+              <span style={{ fontSize: 12, color: T.n1000 }}>Coming soon</span>
+            </div>
+          ) : (<>
           <HeathrowMap assets={assets} mode={mode} params={params}
             selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setPanels((p) => ({ ...p, detail: true })); }}
             showScheme histories={histories}
             eaFloods={eaFloods} eaSelected={eaSelected} setEaSelected={setEaSelected} showEa={showEa}
             onExpandStation={(id) => { setSelectedId(id); setPanels((p) => ({ ...p, detail: true })); }}
-            onExpandEa={(code) => { setEaSelected(code); }} />
+            onExpandEa={(code) => { setEaSelected(code); }}
+            activeTool={activeTool} subTool={subTool}
+            cursorPos={cursorPos} setCursorPos={setCursorPos}
+            panToId={panToId} setPanToId={setPanToId} />
 
-          <MapTools />
+          <MapTools activeTool={activeTool} setActiveTool={setActiveTool} subTool={subTool} setSubTool={setSubTool} />
           {/* Bottom-left, sitting above the network dock rather than inside it. */}
           <div className="fiq absolute" style={{ left: 8, bottom: 8, zIndex: 500, display: "flex", flexDirection: "column", gap: 6 }}>
-            <Legend assets={assets} eaFloods={eaFloods} showEa={showEa} setShowEa={setShowEa} />
+            <Legend assets={assets} eaFloods={eaFloods} showEa={showEa} setShowEa={setShowEa} dimmed={commsOpen} />
             <div className="fiq-mono" style={{ fontSize: 10, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
               color: T.white, WebkitTextStroke: `2px #000`, paintOrder: "stroke fill" }}>
-              <span style={{ fontWeight: 700 }}>Lat</span> 51.4700{" "}
-              <span style={{ fontWeight: 700 }}>Lng</span> -0.4543{" "}
+              <span style={{ fontWeight: 700 }}>Lat</span> {cursorPos.lat.toFixed(4)}{" "}
+              <span style={{ fontWeight: 700 }}>Lng</span> {cursorPos.lng.toFixed(4)}{" "}
               <span style={{ fontWeight: 700 }}>w3w</span>{" "}
-              <span>///filled.count.soap</span>
+              <span>{w3wFromLatLng(cursorPos.lat, cursorPos.lng)}</span>
             </div>
           </div>
 
@@ -2052,16 +3015,6 @@ export default function FloodIqHeathrow() {
             <EaWarningCard flood={eaFloods?.items.find((f) => f.code === eaSelected)}
               onClose={() => setEaSelected(null)} />
           )}
-
-          {/* storm sim — floating action cluster */}
-          <div className="absolute flex" style={{ left: "50%", transform: "translateX(-50%)", top: 8, gap: 6, zIndex: 500 }}>
-            <button onClick={() => setStorm(!storm)}
-              style={{ fontSize: 12, fontWeight: 600, padding: "7px 12px", borderRadius: T.r2,
-                background: storm ? T.red800 : T.surface1, color: storm ? T.white : T.n1,
-                border: `1px solid ${storm ? T.red800 : T.borderPrimary}`, boxShadow: T.shadow }}>
-              {storm ? "\u25a0 Stop storm sim" : "\u25b6 Simulate storm"}
-            </button>
-          </div>
 
           {mode === "scenario" ? (
             <ScenarioPanel params={params} setParams={setParams} assets={assets} onClose={() => setMode("live")} />
@@ -2072,9 +3025,11 @@ export default function FloodIqHeathrow() {
           ) : (
             panels.detail && selected && (
               <DetailPanel asset={selected} history={histories[selectedId] || []} mode={mode} params={params}
-                onRaise={raiseIncident} onClose={() => togglePanel("detail")} />
+                onRaise={raiseIncident} onClose={() => togglePanel("detail")}
+                forecast={forecast} simProgress={simProgress} />
             )
           )}
+          </>)}
         </div>
 
         <NetworkDock assets={assets} mode={mode} params={params} selectedId={selectedId}
@@ -2085,7 +3040,9 @@ export default function FloodIqHeathrow() {
           incidents={incidents} setIncidents={setIncidents}
           selectedIncId={selectedIncId} setSelectedIncId={setSelectedIncId}
           onDraftAlert={draftFromIncident}
-          eaSelected={eaSelected} setEaSelected={setEaSelected} />
+          eaSelected={eaSelected} setEaSelected={setEaSelected} histories={histories}
+          onZoomTo={(id) => { setSelectedId(id); setPanToId(id); setPanels((p) => ({ ...p, detail: true })); }}
+          forecast={forecast} simProgress={simProgress} />
       </div>
 
       <CommsDrawer open={commsOpen} onClose={() => setCommsOpen(false)}

@@ -14,6 +14,11 @@ import pointQuery from "../assets/figma/tool-point-query.svg";
 import zoom from "../assets/figma/tool-zoom.svg";
 import northStar from "../assets/figma/tool-north-star.svg";
 import pan from "../assets/figma/tool-pan.svg";
+import ellipticalSelect from "../assets/figma/elliptical-select.svg";
+import freeformSelect from "../assets/figma/freeform-select.svg";
+import rectSelect from "../assets/figma/rectangle-select.svg";
+import transect from "../assets/figma/transect.svg";
+import toolDistance from "../assets/figma/tool-distance.svg";
 import goToMap from "../assets/figma/icon-go-to-map.svg";
 import home from "../assets/figma/nav-home.svg";
 import ellipsisVert from "../assets/figma/nav-ellipsis-vert.svg";
@@ -23,6 +28,13 @@ import mode2 from "../assets/figma/mode-2.svg";
 import mode3 from "../assets/figma/mode-3.svg";
 import mode4 from "../assets/figma/mode-4.svg";
 import mode5 from "../assets/figma/mode-5.svg";
+import commsFeed from "../assets/figma/comms-feed.svg";
+import zoomToMap from "../assets/figma/zoom-to-map.svg";
+import colOrder from "../assets/figma/col-order.svg";
+import collapseIcon from "../assets/figma/collapse.svg";
+import keyDown from "../assets/figma/key-down.svg";
+import keyUp from "../assets/figma/key-up.svg";
+import cloudRain from "../assets/figma/cloud-rain.svg";
 
 /* Raster and multi-colour assets — rendered as <img>, not masked. */
 import eaAlert from "../assets/figma/ea-flood-alert.png";
@@ -31,6 +43,7 @@ import eaSevere from "../assets/figma/ea-severe-flood-warning.png";
 import basemapThumb from "../assets/figma/basemap-thumb.png";
 import avatarRichard from "../assets/figma/avatar-richard.png";
 import floodCoin from "../assets/figma/flood-coin.svg";
+import logoFloodIq from "../assets/figma/logo-floodiq.svg";
 import logoFloodIqFull from "../assets/figma/logo-floodiq-full.svg";
 import pulseAmberOuter from "../assets/figma/pulse-amber-outer.svg";
 import pulseAmberInner from "../assets/figma/pulse-amber-inner.svg";
@@ -48,6 +61,11 @@ export const FIG = {
   zoom: { src: zoom, inset: "12.5% 14.06% 14.06% 12.5%" },
   northStar: { src: northStar, inset: "11.31% 16.68% 12.05% 16.68%" },
   pan: { src: pan, inset: "4.69%" },
+  ellipticalSelect: { src: ellipticalSelect, inset: "0%" },
+  freeformSelect: { src: freeformSelect, inset: "0%" },
+  rectSelect: { src: rectSelect, inset: "0%" },
+  transect: { src: transect, inset: "0%" },
+  toolDistance: { src: toolDistance, inset: "0%" },
   goToMap: { src: goToMap, inset: "14.06%" },
   home: { src: home, inset: "14.06%" },
   ellipsisVert: { src: ellipsisVert, inset: "12.5% 40.63%" },
@@ -57,6 +75,13 @@ export const FIG = {
   mode3: { src: mode3, inset: "3.64% 3.65% 3.65% 3.64%" },
   mode4: { src: mode4, inset: "2.61% 2.6% 2.6% 2.61%" },
   mode5: { src: mode5, inset: "1.56%" },
+  commsFeed: { src: commsFeed, inset: "0%" },
+  zoomToMap: { src: zoomToMap, inset: "0%" },
+  colOrder: { src: colOrder, inset: "0%" },
+  collapse: { src: collapseIcon, inset: "0%" },
+  keyDown: { src: keyDown, inset: "0%" },
+  keyUp: { src: keyUp, inset: "0%" },
+  cloudRain: { src: cloudRain, inset: "0%" },
   badgeDot: { src: badgeDot, inset: "0%" },
   schemeBoundary: { src: schemeBoundary, inset: "0%" },
 };
@@ -94,16 +119,11 @@ export function FigIcon({ name, size = 16, title }) {
   );
 }
 
-/* The Jacobs Flood IQ mark — full logo with wordmark. */
-export function FloodIqMark({ size = 24, expanded = false }) {
-  if (expanded) {
-    return (
-      <img src={logoFloodIqFull} alt="Flood IQ" style={{ height: size, width: "auto", flexShrink: 0 }} />
-    );
-  }
+/* The Jacobs Flood IQ mark — icon only, always 24px. Text shown separately by parent. */
+export function FloodIqMark({ size = 24 }) {
   return (
     <span style={{ position: "relative", display: "inline-block", width: size, height: size, flexShrink: 0, overflow: "hidden" }}>
-      <img src={logoFloodIqFull} alt="Flood IQ" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+      <img src={logoFloodIq} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
     </span>
   );
 }

@@ -16,7 +16,7 @@
    (node 2001:13170). */
 export const HEATHROW_VIEW = {
   center: [51.4700, -0.4545],
-  zoom: 13,
+  zoom: 14,
   minZoom: 10,
   maxZoom: 18,
 };
@@ -90,6 +90,20 @@ export const ASSET_COORDS = {
   "drn-n": [51.4805, -0.4590], // northern balancing pond
   "gw-st": [51.4562, -0.4718], // Stanwell gravels BH-11
   "met-01": [51.4716, -0.4528], // airfield rain gauge, central area
+  "met-02": [51.4690, -0.4435], // T2 Terminal rain gauge
+  "met-03": [51.4735, -0.4660], // T5 Terminal rain gauge
+  "met-04": [51.4510, -0.4880], // Stanwell Moor gauge
+  "met-05": [51.4620, -0.5030], // Colnbrook gauge
+  "met-06": [51.4710, -0.4580], // Runway 09L rain gauge
+  "riv-ct": [51.4590, -0.5120], // Colne at Staines Bridge
+  "riv-cb": [51.4640, -0.4990], // Colne Brook at Brands Hill
+  "riv-tw": [51.4650, -0.5280], // Thames at Datchet
+  "drn-w": [51.4740, -0.4700], // Western balancing pond
+  "drn-s": [51.4570, -0.4770], // Southern detention basin
+  "drn-rw": [51.4685, -0.4550], // Runway 09L/27R catchpit
+  "gw-sm": [51.4530, -0.4830], // Stanwell Moor BH-07
+  "gw-lh": [51.4610, -0.4970], // Longford House BH-03
+  "str-bw": [51.4630, -0.5100], // Bourne Chalk spring
 };
 
 export const latlngFor = (asset) => ASSET_COORDS[asset.id] || HEATHROW_VIEW.center;
