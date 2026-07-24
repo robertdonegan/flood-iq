@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { LineChart, Line, ResponsiveContainer, ReferenceLine } from "recharts";
-import { MapContainer, TileLayer, Polygon, Polyline, Marker, Tooltip, CircleMarker, Popup, useMap, useMapEvent } from "react-leaflet";
+import { MapContainer, TileLayer, Polygon, Polyline, Marker, CircleMarker, Popup, useMap, useMapEvent } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { HEATHROW_VIEW, TERMINAL_VIEW, BASEMAPS, SCHEME, LONGFORD_RIVER, latlngFor } from "./src/map/geo.js";
+import { HEATHROW_VIEW, BASEMAPS, LONGFORD_RIVER, latlngFor } from "./src/map/geo.js";
 import { FigIcon, FloodIqMark, FloodAvatar, AlertPulse, IMG, EA_MARK } from "./src/ui/FigIcon.jsx";
-import { fetchEaFloods, fetchEaPolygon, geoJsonToLatLngs, EA_SEVERITY } from "./src/map/eaFloods.js";
+import { fetchEaFloods, fetchEaPolygon, geoJsonToLatLngs } from "./src/map/eaFloods.js";
 
 /* ==================================================================
    TOKENS — lifted from Flood IQ (Figma: K1jHQ2zUuTxHCtWZdxMHHr)
@@ -16,6 +16,7 @@ const T = {
   n600: "#E5E5E5",
   n1000: "#999999",
   n1100: "#666666",
+  n2: "#4D4D4D",
   n1: "#333333",
   n3: "#C8C8C8",
   white: "#FFFFFF",
@@ -23,6 +24,8 @@ const T = {
   surface1: "#FFFFFF",
   // brand
   blue800: "#3B6DE6",
+  blue700: "#2E5CD6",
+  blue500: "#5B87EB",
   blue100: "#EEF4FE",
   blueP2: "#0A7DFF",
   blueP1: "#231EDC",
@@ -46,7 +49,7 @@ const T = {
   shadow: "0px 1px 2px 0px rgba(0,0,0,0.1), 0px 2px 4px 0px rgba(0,0,0,0.1)",
   shadowLg: "0px 2px 4px 0px rgba(0,0,0,0.1), 0px 8px 24px 0px rgba(0,0,0,0.14)",
   // radii
-  r2: 2, r4: 4, r8: 8, r16: 16, r20: 20, r32: 32,
+  r2: 2, r3: 3, r4: 4, r8: 8, r16: 16, r20: 20, r32: 32,
 };
 
 const FONT_CSS = `
@@ -212,15 +215,6 @@ const FEED_META = {
   sensor:   { label: "Sensor", color: T.ground },
 };
 
-/* The concept opens mid-event: a flood forecast is already in force for
-   the catchment, so the top-right badges have something to say on load. */
-const FORECAST = {
-  headline: "Heavy rain, Colne catchment",
-  window: "16:00 today – 09:00 tomorrow",
-  source: "Met Office amber · EA Floodline",
-  detail: "45–60mm over 17h on saturated ground. Reservoir expected to reach top water level overnight.",
-};
-
 const AUDIENCES = [
   { id: "public", label: "Downstream residents", detail: "Staines · Wraysbury · Colnbrook · Stanwell", est: "12,400 opted-in" },
   { id: "ops",    label: "Airport operations",   detail: "HAL control · airside duty · ground handling", est: "310 staff" },
@@ -241,76 +235,6 @@ const EA_SEVERITY_COLORS = {
   warning: T.orange600,
   alert: T.orange500,
 };
-
-/* MapTooltip — compact popup shown next to a clicked station or EA warning marker.
-   Renders as a Leaflet Tooltip anchored to a lat/lng position. */
-function MapTooltip({ position, children, onClose, onExpand }) {
-  if (!position) return null;
-  return (
-    <Marker position={position} icon={L.divIcon({ className: "", iconSize: [0, 0], iconAnchor: [0, 0] })}>
-      <Tooltip permanent direction="right" offset={[12, 0]} closeButton={false}
-        className="fiq-map-tooltip">
-        <div style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif", fontSize: 12, maxWidth: 280, padding: 0 }}>
-          {children}
-          <div className="flex items-center" style={{ gap: 6, marginTop: 8, paddingTop: 6, borderTop: `1px solid ${T.borderPrimary}` }}>
-            {onExpand && (
-              <button onClick={(e) => { e.stopPropagation(); onExpand(); }}
-                style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: T.r2,
-                  background: T.n1, color: T.white, cursor: "pointer", border: "none" }}>
-                Open detail
-              </button>
-            )}
-            <button onClick={(e) => { e.stopPropagation(); onClose(); }}
-              style={{ fontSize: 11, fontWeight: 500, padding: "3px 8px", borderRadius: T.r2,
-                background: T.white, color: T.n1100, cursor: "pointer", border: `1px solid ${T.borderPrimary}` }}>
-              Close
-            </button>
-          </div>
-        </div>
-      </Tooltip>
-    </Marker>
-  );
-}
-
-/* StationTooltip — compact station detail for map popup */
-function StationTooltip({ asset, mode, params, history, onExpand }) {
-  if (!asset) return null;
-  const st = statusOf(asset);
-  const below = GROUP_META[asset.group].ground === "below";
-  return (
-    <div style={{ minWidth: 140 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: T.n1, lineHeight: 1.2 }}>{asset.name}</div>
-      <div className="flex items-center" style={{ gap: 5, marginTop: 3 }}>
-        <AlertChip status={st}>{LEVELS[st].label}</AlertChip>
-        <span className={`fiq-mono ${(st === "alert" || st === "warning" || st === "severe") ? "fiq-text-pulse" : ""}`}
-          style={{ fontSize: 13, fontWeight: 600, color: LEVELS[st].fill }}>
-          {fmt(asset.level, asset.unit)}
-          <span style={{ fontSize: 9, color: T.n1000, fontWeight: 400 }}> {asset.unit}</span>
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/* EaTooltip — compact EA warning for map popup */
-function EaTooltip({ flood }) {
-  if (!flood) return null;
-  return (
-    <div style={{ minWidth: 200 }}>
-      <div className="flex items-center" style={{ gap: 6 }}>
-        <img src={EA_MARK[flood.tier]} alt="" style={{ width: 20, height: 18, flexShrink: 0 }} />
-        <div style={{ fontSize: 12, fontWeight: 600, color: T.n1, lineHeight: 1.2 }}>{flood.label}</div>
-      </div>
-      <div style={{ fontSize: 11, color: T.n1100, marginTop: 4, lineHeight: 1.35 }}>{flood.area}</div>
-      {flood.river && (
-        <div style={{ fontSize: 10, color: T.n1000, marginTop: 2 }}>{flood.river}</div>
-      )}
-      {flood.message && (
-        <div style={{ fontSize: 10, color: T.n1100, marginTop: 4, lineHeight: 1.4, maxHeight: 48, overflow: "hidden" }}>{flood.message}</div>
-      )}
-    </div>
-  );
-}
 
 /* ==================================================================
    Helpers
@@ -494,13 +418,12 @@ function Spark({ data, color, height = 32, ground, maxStage, overspill, forecast
   const chartData = (() => {
     if (!hasFc) return data.map((v, i) => ({ i, v }));
     const splitIdx = data.length;
-    const result = [];
-    for (let i = 0; i < data.length; i++) result.push({ i, v: data[i] });
-    for (let j = 0; j < forecast.length; j++) {
-      const idx = splitIdx + j;
-      const fIdx = Math.min(j, forecast[j] !== undefined ? j : forecast.length - 1);
-      result.push({ i: idx, fv: forecast[fIdx] });
-    }
+    const result = data.map((v, i) => ({ i, v }));
+    /* Reveal the forecast tail only as far as the playhead has stepped, so
+       the dashed prediction grows across the 3 days with the timeline. */
+    const reveal = Math.min(simProgress + 1, forecast.length);
+    if (reveal > 0 && result[splitIdx - 1]) result[splitIdx - 1].fv = data[data.length - 1];
+    for (let j = 0; j < reveal; j++) result.push({ i: splitIdx + j, fv: forecast[j] });
     return result;
   })();
   const pastEnd = data.length;
@@ -1107,18 +1030,16 @@ function PanToAsset({ assets, panToId, onDone }) {
   return null;
 }
 
-function HeathrowMap({ assets, mode, params, selectedId, onSelect, showScheme,
+function HeathrowMap({ assets, mode, params, selectedId, onSelect,
                       eaFloods, eaSelected, setEaSelected, showEa, histories,
-                      onExpandStation, onExpandEa, activeTool, subTool, cursorPos, setCursorPos,
+                      activeTool, subTool, cursorPos, setCursorPos,
                       panToId, setPanToId }) {
   const [basemap, setBasemap] = useState("osm");
   const [showRain, setShowRain] = useState(false);
   const tiles = BASEMAPS[basemap];
-  const [tooltip, setTooltip] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [measurePoints, setMeasurePoints] = useState([]);
   const [measureResult, setMeasureResult] = useState(null);
-  const [drawingShape, setDrawingShape] = useState(null);
   const [queryResult, setQueryResult] = useState(null);
   const toolRef = useRef({ activeTool, subTool });
   toolRef.current = { activeTool, subTool };
@@ -1127,12 +1048,8 @@ function HeathrowMap({ assets, mode, params, selectedId, onSelect, showScheme,
     const asset = typeof a === "string" ? assets.find((x) => x.id === a) : a;
     if (!asset) return;
     if (toolRef.current.activeTool === "cursorSelect") {
-      setTooltip({
-        type: "station",
-        position: latlngFor(asset),
-        data: asset,
-      });
-      onSelect(asset.id);
+      onSelect(asset.id);   // single click opens the station detail card...
+      setEaSelected(null);  // ...and dismisses any EA warning card
     } else if (toolRef.current.activeTool === "rectangleSelect" || toolRef.current.activeTool === "groupSelect") {
       setSelectedIds((prev) => prev.includes(asset.id) ? prev.filter((id) => id !== asset.id) : [...prev, asset.id]);
     } else if (toolRef.current.activeTool === "pointQuery") {
@@ -1145,15 +1062,10 @@ function HeathrowMap({ assets, mode, params, selectedId, onSelect, showScheme,
     const floodObj = typeof flood === "string" ? eaFloods?.items?.find((x) => x.code === flood) : null;
     if (toolRef.current.activeTool === "cursorSelect") {
       if (flood === eaSelected) {
-        setTooltip(null);
-        setEaSelected(null);
+        setEaSelected(null);  // click the open warning again to dismiss
       } else if (floodObj) {
-        setTooltip({
-          type: "ea",
-          position: [floodObj.lat, floodObj.long],
-          data: floodObj,
-        });
-        setEaSelected(flood);
+        setEaSelected(flood); // single click opens the EA warning card...
+        onSelect(null);       // ...and clears any station selection
       }
     } else if (toolRef.current.activeTool === "pointQuery" && floodObj) {
       setQueryResult({ lat: floodObj.lat, lng: floodObj.long, flood: floodObj });
@@ -1188,12 +1100,11 @@ function HeathrowMap({ assets, mode, params, selectedId, onSelect, showScheme,
         return next;
       });
     } else {
-      /* For cursorSelect and group tools, map background clicks close tooltips */
-      setTooltip(null);
+      /* Background click dismisses any open station detail / EA card. */
+      onSelect(null);
+      setEaSelected(null);
     }
   };
-
-  const closeTooltip = () => setTooltip(null);
 
   const getCursorStyle = () => {
     switch (activeTool) {
@@ -1279,20 +1190,6 @@ function HeathrowMap({ assets, mode, params, selectedId, onSelect, showScheme,
           <CircleMarker key={`sel-${a.id}`} center={latlngFor(a)} radius={20}
             pathOptions={{ color: T.blue500, fillColor: T.blue500, fillOpacity: 0.15, weight: 2, dashArray: "4 4" }} />
         ))}
-
-        {/* Map tooltip for station or EA warning */}
-        {tooltip && (
-          <MapTooltip position={tooltip.position} onClose={closeTooltip}
-            onExpand={tooltip.type === "station" ? () => { closeTooltip(); onExpandStation(tooltip.data.id); }
-              : () => { closeTooltip(); onExpandEa(tooltip.data.code); }}>
-            {tooltip.type === "station" ? (
-              <StationTooltip asset={tooltip.data} mode={mode} params={params}
-                history={histories[tooltip.data.id] || []} />
-            ) : (
-              <EaTooltip flood={tooltip.data} />
-            )}
-          </MapTooltip>
-        )}
 
         {/* Measure result overlay */}
         {measureResult && (
@@ -1532,55 +1429,226 @@ function SideNav({ mode, setMode, panels, togglePanel, expanded, setExpanded, pa
    what an operator scans for, so keep both and let the tier lead. */
 const badgeCopy = (a) => `${LEVELS[statusOf(a)].label.replace("Flood ", "")} · ${a.name}`;
 
-function TopNav({ published, mode, setMode, commsOpen, setCommsOpen, unreadFeeds, storm, setStorm }) {
+/* ==================================================================
+   Weather forecast timeline — the top-nav centrepiece.
+
+   One hourly series over SIM_STEPS hours (3 days), built from the storm
+   params so the strip and the simulation share one source of truth. The
+   same track doubles as the storm scrubber: its playhead is simProgress,
+   which drives the map dots, the network table and every spark below.
+   ================================================================== */
+const SIM_STEPS = 72; // hours — 1 step per hour, 3 days
+
+const WX_RANK = { sun: 0, cloud: 1, rain: 2, heavy: 3, thunder: 4 };
+const WX_COLOR = { sun: T.yellowP2, cloud: "#8A94A6", rain: T.blueP2, heavy: T.blue700, thunder: "#6B4E9E" };
+const WX_LABEL = { sun: "Clear", cloud: "Cloud", rain: "Rain", heavy: "Heavy rain", thunder: "Thunderstorm" };
+
+const condFor = (mm, hod) => {
+  if (mm >= 10) return "thunder";
+  if (mm >= 5) return "heavy";
+  if (mm >= 1.5) return "rain";
+  if (mm >= 0.2) return "cloud";
+  return hod >= 6 && hod < 20 ? "sun" : "cloud";
+};
+
+/* Hourly weather for the next SIM_STEPS hours, shaped by the storm params.
+   Rain rides a triangular pulse across the storm window; temperature is a
+   diurnal curve cooled by rainfall. Days summarise for the three glyphs. */
+function buildWeather(p) {
+  const H = SIM_STEPS;
+  const start = 1;
+  const dur = clamp(p.duration, 2, H - start - 1);
+  const meanMm = p.rain / Math.max(p.duration, 1);
+  const now = new Date();
+  const startHour = now.getHours();
+
+  const hours = [];
+  for (let h = 0; h < H; h++) {
+    let mm = 0;
+    if (h >= start && h <= start + dur) {
+      const t = (h - start) / dur;
+      const shape = Math.max(0, 1 - Math.abs(t - 0.4) / 0.6);
+      mm = shape * meanMm * 1.6 * (0.6 + p.catchmentWet / 250);
+    } else if (p.catchmentWet > 70) {
+      mm = 0.3;
+    }
+    const hod = (startHour + h) % 24;
+    const diurnal = 13.5 + 4 * Math.sin(((hod - 9) / 24) * Math.PI * 2);
+    const temp = Math.round(diurnal - mm * 0.25);
+    hours.push({ h, mm: +mm.toFixed(1), temp, hod, cond: condFor(mm, hod) });
+  }
+
+  const days = [0, 1, 2].map((d) => {
+    const slice = hours.slice(d * 24, d * 24 + 24);
+    const worst = slice.reduce((w, x) => (WX_RANK[x.cond] > WX_RANK[w] ? x.cond : w), "sun");
+    const date = new Date(now.getTime() + d * 864e5);
+    return {
+      label: d === 0 ? "Today" : date.toLocaleDateString("en-GB", { weekday: "short" }),
+      cond: worst,
+      hi: Math.max(...slice.map((x) => x.temp)),
+      lo: Math.min(...slice.map((x) => x.temp)),
+      mm: Math.round(slice.reduce((s, x) => s + x.mm, 0)),
+    };
+  });
+
+  return { hours, days, maxMm: Math.max(1, ...hours.map((x) => x.mm)) };
+}
+
+/* Compact line-icon weather glyphs, currentColor so the tone comes from
+   WX_COLOR at the call site. */
+function WxGlyph({ cond, size = 16 }) {
+  const s = { width: size, height: size, display: "block" };
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.25, strokeLinecap: "round", strokeLinejoin: "round" };
+  const cloud = <path d="M4.6 12h6.4a2.6 2.6 0 0 0 .2-5.2 3.4 3.4 0 0 0-6.4-.7A2.5 2.5 0 0 0 4.6 12z" {...p} />;
+  switch (cond) {
+    case "sun":
+      return (
+        <svg viewBox="0 0 16 16" style={s}>
+          <circle cx="8" cy="8" r="3.1" {...p} />
+          <g {...p}>{[0, 45, 90, 135, 180, 225, 270, 315].map((a) => {
+            const r = (a * Math.PI) / 180;
+            return <line key={a} x1={8 + Math.cos(r) * 4.8} y1={8 + Math.sin(r) * 4.8} x2={8 + Math.cos(r) * 6.4} y2={8 + Math.sin(r) * 6.4} />;
+          })}</g>
+        </svg>
+      );
+    case "cloud":
+      return <svg viewBox="0 0 16 16" style={s}>{cloud}</svg>;
+    case "rain":
+      return (
+        <svg viewBox="0 0 16 16" style={s}>{cloud}
+          <g {...p}><line x1="6" y1="12.5" x2="5.2" y2="14.4" /><line x1="9" y1="12.5" x2="8.2" y2="14.4" /></g>
+        </svg>
+      );
+    case "heavy":
+      return (
+        <svg viewBox="0 0 16 16" style={s}>{cloud}
+          <g {...p}><line x1="5" y1="12.3" x2="4" y2="14.8" /><line x1="8" y1="12.3" x2="7" y2="14.8" /><line x1="11" y1="12.3" x2="10" y2="14.8" /></g>
+        </svg>
+      );
+    case "thunder":
+      return (
+        <svg viewBox="0 0 16 16" style={s}>{cloud}
+          <path d="M8.5 11.5 6.4 14.4h1.7l-1 2.2" {...p} />
+        </svg>
+      );
+    default:
+      return <svg viewBox="0 0 16 16" style={s}>{cloud}</svg>;
+  }
+}
+
+/* The widget: 3-day weather strip that doubles as the storm scrubber. */
+function ForecastTimeline({ weather, simProgress, setSimProgress, storm, onToggleStorm, canScrub }) {
+  const trackRef = useRef(null);
+  const last = SIM_STEPS - 1;
+  const posPct = (clamp(simProgress, 0, last) / last) * 100;
+
+  const scrubTo = useCallback((clientX) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const ratio = clamp((clientX - r.left) / r.width, 0, 1);
+    setSimProgress(Math.round(ratio * last));
+  }, [last, setSimProgress]);
+
+  const onDown = (e) => {
+    if (!canScrub) { onToggleStorm(); return; }
+    e.preventDefault();
+    scrubTo(e.clientX);
+    const move = (ev) => scrubTo(ev.clientX);
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  };
+
+  return (
+    <div className="flex items-center" style={{ gap: 10, flex: "1 1 auto", minWidth: 340, maxWidth: 660 }}>
+      <button onClick={onToggleStorm} aria-pressed={storm}
+        title={storm ? "Stop storm simulation" : "Simulate storm across the next 3 days"}
+        style={{ flexShrink: 0, width: 30, height: 30, borderRadius: "50%", display: "flex",
+          alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 12,
+          background: storm ? T.red800 : T.surface1, color: storm ? T.white : T.n1,
+          border: `1px solid ${storm ? T.red800 : T.borderPrimary}`, boxShadow: T.shadow }}>
+        {storm ? "■" : "▶"}
+      </button>
+
+      <div ref={trackRef} onPointerDown={onDown}
+        style={{ position: "relative", flex: 1, height: 48, cursor: canScrub ? "ew-resize" : "pointer",
+          userSelect: "none", borderRadius: T.r3, background: T.surface1,
+          border: `1px solid ${T.borderPrimary}`, overflow: "hidden" }}>
+
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 11, height: 18, pointerEvents: "none" }}>
+          {weather.hours.map((x, i) => {
+            const col = x.mm >= 10 ? WX_COLOR.thunder : x.mm >= 5 ? WX_COLOR.heavy : WX_COLOR.rain;
+            return (
+              <span key={i} style={{ position: "absolute", left: `${(i / SIM_STEPS) * 100}%`,
+                width: `${(1 / SIM_STEPS) * 100}%`, bottom: 0, height: `${(x.mm / weather.maxMm) * 100}%`,
+                background: col, opacity: 0.28 + Math.min(0.5, x.mm / 22) }} />
+            );
+          })}
+        </div>
+
+        {[1, 2].map((d) => (
+          <div key={d} style={{ position: "absolute", left: `${(d / 3) * 100}%`, top: 0, bottom: 11,
+            width: 1, background: T.borderPrimary, pointerEvents: "none" }} />
+        ))}
+
+        <div className="flex" style={{ position: "absolute", inset: 0, bottom: 11, pointerEvents: "none" }}>
+          {weather.days.map((d, i) => (
+            <div key={i} className="flex items-center justify-center" style={{ flex: 1, gap: 6, padding: "0 6px" }}>
+              <span style={{ color: WX_COLOR[d.cond], display: "flex" }} title={WX_LABEL[d.cond]}>
+                <WxGlyph cond={d.cond} size={17} />
+              </span>
+              <span style={{ lineHeight: 1.15 }}>
+                <span style={{ display: "block", fontSize: 10, fontWeight: 600, color: T.n1 }}>{d.label}</span>
+                <span className="fiq-mono" style={{ display: "block", fontSize: 9, color: T.n1000 }}>
+                  {d.hi}° / {d.lo}°{d.mm > 0 ? ` · ${d.mm}mm` : ""}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="fiq-mono flex justify-between" style={{ position: "absolute", left: 4, right: 4, bottom: 1,
+          fontSize: 8, color: T.n1000, pointerEvents: "none" }}>
+          <span>now</span><span>+24h</span><span>+48h</span><span>+72h</span>
+        </div>
+
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: `${posPct}%`, width: 0,
+          borderLeft: `2px solid ${storm ? T.red800 : T.scenario}`, pointerEvents: "none" }}>
+          <div style={{ position: "absolute", top: -1, left: -1, transform: "translateX(-50%)",
+            background: storm ? T.red800 : T.scenario, color: T.white, fontSize: 8, fontWeight: 700,
+            borderRadius: T.r2, padding: "0 3px", whiteSpace: "nowrap" }} className="fiq-mono">
+            +{clamp(simProgress, 0, last)}h
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TopNav({ published, commsOpen, setCommsOpen, unreadFeeds, storm, onToggleStorm,
+                 weather, simProgress, setSimProgress, canScrub }) {
   return (
     <header className="fiq flex items-center shrink-0"
-      style={{ height: 64, padding: "0 20px", background: T.n400, borderBottom: `1px solid ${T.n600}`, gap: 20 }}>
-      {/* Published stamp yields width first — the forecast is the more
-          useful of the two once the nav expands. */}
-      <div className="flex items-baseline min-w-0" style={{ gap: 4, flex: "0 1 auto" }}>
-        <span className="shrink-0" style={{ fontSize: 12, color: T.n1000 }}>Last updated:</span>
-        <span className="truncate" style={{ fontSize: 12, color: T.n1100 }}>{published}</span>
+      style={{ height: 64, padding: "0 16px", background: T.n400, borderBottom: `1px solid ${T.n600}`, gap: 16 }}>
+      {/* Left / right clusters take equal flex so the timeline sits dead
+          centre regardless of their differing widths. */}
+      <div className="flex items-center min-w-0" style={{ flex: 1 }}>
+        <div className="flex flex-col min-w-0" style={{ maxWidth: 140 }}>
+          <span style={{ fontSize: 10, color: T.n1000 }}>Last updated</span>
+          <span className="truncate fiq-mono" style={{ fontSize: 11, color: T.n1100 }}>{published}</span>
+        </div>
       </div>
 
-      {/* The forecast that puts the scheme in this state — the concept
-          opens mid-event rather than at all-clear. */}
-      <div className="flex items-baseline min-w-0" style={{ gap: 4, flex: "1 1 auto", minWidth: 190 }}>
-        <span className="shrink-0" style={{ fontSize: 12, color: T.n1000 }}>Forecast:</span>
-        <span className="truncate" style={{ fontSize: 12, color: T.n1100 }} title={FORECAST.detail}>
-          {FORECAST.headline} · {FORECAST.window}
-        </span>
+      <div className="flex justify-center" style={{ flex: "0 1 660px", minWidth: 340 }}>
+        <ForecastTimeline weather={weather} simProgress={simProgress} setSimProgress={setSimProgress}
+          storm={storm} onToggleStorm={onToggleStorm} canScrub={canScrub} />
       </div>
 
-      {/* Simulate storm — toggles storm mode. When active, mode changes to forecast. */}
-      <div className="flex items-center shrink-0">
-        <button onClick={() => {
-            if (storm) {
-              setStorm(false);
-              setMode("live");
-            } else {
-              setStorm(true);
-              setMode("forecast");
-            }
-          }}
-          style={{ fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: T.r2,
-            background: storm ? T.red800 : T.surface1, color: storm ? T.white : T.n1,
-            border: `1px solid ${storm ? T.red800 : T.borderPrimary}`, cursor: "pointer",
-            whiteSpace: "nowrap" }}>
-          {storm ? "\u25a0 Stop storm" : "\u25b6 Simulate storm"}
-        </button>
-      </div>
-
-      <div className="flex items-baseline shrink-0" style={{ gap: 4 }}>
-        <span style={{ fontSize: 12, color: T.n1000 }}>Mode:</span>
-        <span style={{ fontSize: 12, color: mode === "scenario" ? T.scenario : mode === "incidents" ? T.blue800 : mode === "forecast" ? T.red800 : T.n1100, fontWeight: (mode === "scenario" || mode === "incidents" || mode === "forecast") ? 600 : 400 }}>
-          {mode === "scenario" ? "Scenario" : mode === "incidents" ? "Incidents" : mode === "forecast" ? "Forecast" : "Live"}
-        </span>
-      </div>
-
-      <div className="flex-1" />
-
-      <div className="flex items-center shrink-0" style={{ gap: 4 }}>
+      <div className="flex items-center justify-end" style={{ flex: 1, gap: 4 }}>
         <button onClick={() => setCommsOpen(!commsOpen)} aria-expanded={commsOpen}
           style={{ position: "relative", display: "flex", alignItems: "center", gap: 6,
             fontSize: 12, fontWeight: 600, padding: "6px 10px", borderRadius: T.r2,
@@ -1749,13 +1817,22 @@ function Legend({ assets, eaFloods, showEa, setShowEa, dimmed }) {
   );
 }
 
-/* Detail for one EA warning area, opened from its map triangle. */
-function EaWarningCard({ flood, onClose }) {
+/* Detail for one EA warning area, opened from its map triangle into the
+   bottom dock's Detail tab. */
+function EaWarningBody({ flood, onClose }) {
   if (!flood) return null;
   return (
-    <Panel title="Environment Agency warning" onClose={onClose}
-      style={{ position: "absolute", left: 56, top: 8, width: 320, maxHeight: "calc(100% - 16px)", zIndex: 600 }}>
-      <div style={{ padding: 10 }}>
+    <div>
+      <div className="flex items-center justify-between" style={{ padding: "8px 12px", borderBottom: `1px solid ${T.borderPrimary}` }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: T.n1000, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Environment Agency warning
+        </span>
+        {onClose && (
+          <button onClick={onClose} aria-label="Close detail"
+            style={{ fontSize: 12, color: T.n1100, lineHeight: 1, padding: "0 2px", background: "none", border: "none", cursor: "pointer" }}>✕</button>
+        )}
+      </div>
+      <div style={{ padding: 12, maxWidth: 460 }}>
         <div className="flex items-start" style={{ gap: 8 }}>
           <img src={EA_MARK[flood.tier]} alt="" style={{ width: 30, height: 28, flexShrink: 0 }} />
           <div className="min-w-0">
@@ -1786,7 +1863,7 @@ function EaWarningCard({ flood, onClose }) {
           </div>
         )}
       </div>
-    </Panel>
+    </div>
   );
 }
 
@@ -1882,7 +1959,7 @@ function NetworkDock({
   const groups = ["all", ...Object.keys(GROUP_META)];
   const shown = assets.filter((a) => {
     const matchesGroup = filter === "all" || a.group === filter;
-    const matchesSearch = !searchNetwork || 
+    const matchesSearch = !searchNetwork ||
       a.name.toLowerCase().includes(searchNetwork.toLowerCase()) ||
       a.ref.toLowerCase().includes(searchNetwork.toLowerCase());
     return matchesGroup && matchesSearch;
@@ -2095,6 +2172,7 @@ function NetworkDock({
           <EAWarningsBody warnings={filteredEa} selectedCode={eaSelected} onSelectWarning={setEaSelected} />
         </div>
       )}
+
     </section>
   );
 }
@@ -2203,17 +2281,24 @@ function AssetRow({ asset, st, proj, projSt, sel, below, cell, num, expanded, mo
   );
 }
 
-function DetailPanel({ asset, history, mode, params, onRaise, onClose, forecast, simProgress }) {
+/* Station detail, rendered inside the bottom dock's Detail tab. */
+function StationDetailBody({ asset, history, mode, params, onRaise, onClose, forecast, simProgress }) {
   if (!asset) return null;
   const st = statusOf(asset);
   const proj = mode === "scenario" ? project(asset, params) : null;
   const projSt = proj !== null ? levelFor(asset, proj) : null;
   const below = GROUP_META[asset.group].ground === "below";
-  const rows = asset.invert ? ["alert", "warning", "severe"] : ["alert", "warning", "severe"];
+  const rows = ["alert", "warning", "severe"];
   return (
-    <Panel title="Station detail" onClose={onClose}
-      style={{ position: "absolute", right: 8, top: 48, width: 300, maxHeight: "calc(100% - 120px)" }}>
-      <div style={{ padding: 10 }}>
+    <div>
+      <div className="flex items-center justify-between" style={{ padding: "8px 12px", borderBottom: `1px solid ${T.borderPrimary}` }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: T.n1000, textTransform: "uppercase", letterSpacing: "0.06em" }}>Station detail</span>
+        {onClose && (
+          <button onClick={onClose} aria-label="Close detail"
+            style={{ fontSize: 12, color: T.n1100, lineHeight: 1, padding: "0 2px", background: "none", border: "none", cursor: "pointer" }}>✕</button>
+        )}
+      </div>
+      <div style={{ padding: 12, maxWidth: 360 }}>
         <div style={{ fontSize: 10, color: below ? T.ground : T.blue800, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em" }}>
           {GROUP_META[asset.group].label} · {GROUP_META[asset.group].ground} ground
         </div>
@@ -2278,7 +2363,7 @@ function DetailPanel({ asset, history, mode, params, onRaise, onClose, forecast,
           </div>
         )}
       </div>
-    </Panel>
+    </div>
   );
 }
 
@@ -2740,12 +2825,13 @@ function CommsDrawer({
    App
    ================================================================== */
 
-/* Generate a 72-step forecast for every asset from current state + params.
-   Each step represents ~20 real minutes (72 steps ≈ 24 hours of wall-clock sim). */
+/* Generate an hourly forecast for every asset from current state + params.
+   One step per hour, SIM_STEPS steps = 3 days, indexed by the timeline
+   playhead (simProgress) so scrubbing the widget steps every asset. */
 function generateForecast(currentAssets, p) {
   const fc = {};
   let snapshot = currentAssets.map((a) => ({ ...a }));
-  for (let step = 0; step < 72; step++) {
+  for (let step = 0; step < SIM_STEPS; step++) {
     const snap = {};
     snapshot.forEach((a) => { snap[a.id] = a.level; });
     Object.keys(snap).forEach((id) => { if (!fc[id]) fc[id] = []; fc[id].push(snap[id]); });
@@ -2818,7 +2904,7 @@ function generateForecast(currentAssets, p) {
 export default function FloodIqHeathrow() {
   const [assets, setAssets] = useState(seedAssets);
   const [histories, setHistories] = useState(() =>
-    Object.fromEntries(seedAssets.map((a) => [a.id, Array.from({ length: 72 }, () => a.level + (Math.random() - 0.5) * 0.05 * (a.max - a.min))]))
+    Object.fromEntries(seedAssets.map((a) => [a.id, Array.from({ length: SIM_STEPS }, () => a.level + (Math.random() - 0.5) * 0.05 * (a.max - a.min))]))
   );
   const [storm, setStorm] = useState(false);
   const [mode, setMode] = useState("live");
@@ -2851,6 +2937,25 @@ export default function FloodIqHeathrow() {
   const stormRef = useRef(storm);
   stormRef.current = storm;
 
+  /* Exogenous weather for the timeline widget — driven by the storm params
+     so the strip and the simulation tell one story. */
+  const weather = useMemo(() => buildWeather(params), [params]);
+
+  /* When a storm is playing (or being scrubbed), the values shown across the
+     map, table and panels come from the forecast at the playhead — so the
+     whole view steps through the 3 days with the timeline. Off-storm, live
+     telemetry drives everything. */
+  const viewAssets = useMemo(() => {
+    if (!storm || !forecast) return assets;
+    const i = clamp(simProgress, 0, SIM_STEPS - 1);
+    return assets.map((a) => (forecast[a.id] ? { ...a, level: forecast[a.id][i] } : a));
+  }, [assets, forecast, storm, simProgress]);
+
+  const toggleStorm = () => {
+    if (storm) { setStorm(false); setMode("live"); }
+    else { setStorm(true); setMode("forecast"); }
+  };
+
   /* EA national warnings. Published roughly every 15 minutes. */
   useEffect(() => {
     const ac = new AbortController();
@@ -2866,6 +2971,9 @@ export default function FloodIqHeathrow() {
   useEffect(() => {
     const id = setInterval(() => {
       setAssets((cur) => {
+        /* Frozen during a storm — the forecast + playhead drive the view
+           deterministically, so live drift would fight the scrubber. */
+        if (stormRef.current) return cur;
         const res = cur.find((a) => a.id === "res-01");
         return cur.map((a) => {
           const range = a.max - a.min;
@@ -2914,7 +3022,7 @@ export default function FloodIqHeathrow() {
     if (!storm || !forecast) return;
     const id = setInterval(() => {
       setSimProgress((p) => {
-        if (p >= 72) { setStorm(false); return 72; }
+        if (p >= SIM_STEPS - 1) { setStorm(false); return SIM_STEPS - 1; }
         return p + 1;
       });
     }, 1500);
@@ -2957,13 +3065,6 @@ export default function FloodIqHeathrow() {
     setCommsOpen(true);
   };
 
-  const selected = assets.find((a) => a.id === selectedId);
-
-  const jumpToStation = (id) => {
-    setSelectedId(id);
-    setPanels((p) => ({ ...p, detail: true }));
-  };
-
   return (
     <div className="fiq flex" style={{ height: "100vh", background: T.surface1, color: T.n1 }}>
       <style>{FONT_CSS}</style>
@@ -2974,9 +3075,11 @@ export default function FloodIqHeathrow() {
         page={page} setPage={setPage} />
 
       <div className="flex flex-col flex-1 min-w-0">
-        <TopNav published={published} mode={mode} setMode={setMode}
+        <TopNav published={published}
           commsOpen={commsOpen} setCommsOpen={setCommsOpen} unreadFeeds={seedFeeds.length}
-          storm={storm} setStorm={setStorm} />
+          storm={storm} onToggleStorm={toggleStorm}
+          weather={weather} simProgress={simProgress} setSimProgress={setSimProgress}
+          canScrub={!!forecast} />
 
         <div className="relative flex-1 min-h-0" style={{ overflow: "hidden" }}>
           {page ? (
@@ -2988,12 +3091,10 @@ export default function FloodIqHeathrow() {
               <span style={{ fontSize: 12, color: T.n1000 }}>Coming soon</span>
             </div>
           ) : (<>
-          <HeathrowMap assets={assets} mode={mode} params={params}
-            selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setPanels((p) => ({ ...p, detail: true })); }}
-            showScheme histories={histories}
+          <HeathrowMap assets={viewAssets} mode={mode} params={params}
+            selectedId={selectedId} onSelect={setSelectedId}
+            histories={histories}
             eaFloods={eaFloods} eaSelected={eaSelected} setEaSelected={setEaSelected} showEa={showEa}
-            onExpandStation={(id) => { setSelectedId(id); setPanels((p) => ({ ...p, detail: true })); }}
-            onExpandEa={(code) => { setEaSelected(code); }}
             activeTool={activeTool} subTool={subTool}
             cursorPos={cursorPos} setCursorPos={setCursorPos}
             panToId={panToId} setPanToId={setPanToId} />
@@ -3001,7 +3102,7 @@ export default function FloodIqHeathrow() {
           <MapTools activeTool={activeTool} setActiveTool={setActiveTool} subTool={subTool} setSubTool={setSubTool} />
           {/* Bottom-left, sitting above the network dock rather than inside it. */}
           <div className="fiq absolute" style={{ left: 8, bottom: 8, zIndex: 500, display: "flex", flexDirection: "column", gap: 6 }}>
-            <Legend assets={assets} eaFloods={eaFloods} showEa={showEa} setShowEa={setShowEa} dimmed={commsOpen} />
+            <Legend assets={viewAssets} eaFloods={eaFloods} showEa={showEa} setShowEa={setShowEa} dimmed={commsOpen} />
             <div className="fiq-mono" style={{ fontSize: 10, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
               color: T.white, WebkitTextStroke: `2px #000`, paintOrder: "stroke fill" }}>
               <span style={{ fontWeight: 700 }}>Lat</span> {cursorPos.lat.toFixed(4)}{" "}
@@ -3011,29 +3112,37 @@ export default function FloodIqHeathrow() {
             </div>
           </div>
 
-          {eaSelected && (
-            <EaWarningCard flood={eaFloods?.items.find((f) => f.code === eaSelected)}
-              onClose={() => setEaSelected(null)} />
-          )}
-
           {mode === "scenario" ? (
             <ScenarioPanel params={params} setParams={setParams} assets={assets} onClose={() => setMode("live")} />
           ) : mode === "incidents" ? (
             <IncidentsPanel incidents={incidents} setIncidents={setIncidents}
               selectedIncId={selectedIncId} setSelectedIncId={setSelectedIncId}
               onDraftAlert={draftFromIncident} onClose={() => setMode("live")} />
-          ) : (
-            panels.detail && selected && (
-              <DetailPanel asset={selected} history={histories[selectedId] || []} mode={mode} params={params}
-                onRaise={raiseIncident} onClose={() => togglePanel("detail")}
-                forecast={forecast} simProgress={simProgress} />
-            )
+          ) : (eaSelected || selectedId) && (
+            /* Detail card — right edge, vertically centred. Clears the tool
+               palette and the top corners; the Comms drawer covers it when open. */
+            <div className="fiq flex flex-col" style={{ position: "absolute", right: 8, top: "50%",
+              transform: "translateY(-50%)", width: 320, maxHeight: "calc(100% - 80px)",
+              background: T.surface1, border: `1px solid ${T.borderPrimary}`, borderRadius: T.r4,
+              boxShadow: T.shadowLg, overflow: "hidden", zIndex: 600 }}>
+              <div className="flex-1 min-h-0 overflow-y-auto fiq-scroll">
+                {eaSelected ? (
+                  <EaWarningBody flood={eaFloods?.items.find((f) => f.code === eaSelected)}
+                    onClose={() => setEaSelected(null)} />
+                ) : (
+                  <StationDetailBody asset={viewAssets.find((a) => a.id === selectedId)}
+                    history={histories[selectedId] || []} mode={mode} params={params}
+                    onRaise={raiseIncident} onClose={() => setSelectedId(null)}
+                    forecast={forecast} simProgress={simProgress} />
+                )}
+              </div>
+            </div>
           )}
           </>)}
         </div>
 
-        <NetworkDock assets={assets} mode={mode} params={params} selectedId={selectedId}
-          onSelect={(id) => { setSelectedId(id); setPanels((p) => ({ ...p, detail: true })); }}
+        <NetworkDock assets={viewAssets} mode={mode} params={params} selectedId={selectedId}
+          onSelect={setSelectedId}
           filter={groupFilter} setFilter={setGroupFilter}
           open={dockOpen} setOpen={setDockOpen} height={dockHeight} setHeight={setDockHeight}
           tab={dockTab} setTab={setDockTab}
@@ -3041,13 +3150,13 @@ export default function FloodIqHeathrow() {
           selectedIncId={selectedIncId} setSelectedIncId={setSelectedIncId}
           onDraftAlert={draftFromIncident}
           eaSelected={eaSelected} setEaSelected={setEaSelected} histories={histories}
-          onZoomTo={(id) => { setSelectedId(id); setPanToId(id); setPanels((p) => ({ ...p, detail: true })); }}
+          onZoomTo={(id) => { setSelectedId(id); setPanToId(id); }}
           forecast={forecast} simProgress={simProgress} />
       </div>
 
       <CommsDrawer open={commsOpen} onClose={() => setCommsOpen(false)}
         tab={commsTab} setTab={setCommsTab}
-        message={message} setMessage={setMessage} assets={assets}
+        message={message} setMessage={setMessage} assets={viewAssets}
         audience={audience} setAudience={setAudience}
         feeds={seedFeeds} incidents={incidents} setIncidents={setIncidents} selectedIncId={selectedIncId} />
     </div>
