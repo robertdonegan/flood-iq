@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { resolve } from "path";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -11,6 +12,14 @@ export default defineConfig({
   server: { open: false },
   build: {
     rollupOptions: {
+      /* Multi-page build: each scheme is its own isolated entry/HTML so the
+         two demos (Heathrow, Newry) build to separate output dirs and never
+         share app-level state, routing, or in-memory data — only the
+         tooling/deps/design system are shared. Add new schemes here. */
+      input: {
+        main: resolve(__dirname, "index.html"),
+        newry: resolve(__dirname, "newry.html"),
+      },
       output: {
         /* Split heavy vendor trees out of the app chunk so the map, charts
            and framework cache independently and load in parallel. recharts's
